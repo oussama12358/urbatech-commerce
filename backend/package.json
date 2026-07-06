@@ -1,0 +1,41 @@
+{
+  "name": "urbatech-commerce-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "createdb": "node scripts/create-db.mjs",
+    "migrate:sql": "node scripts/migrate-sql-to-mongo.mjs",
+    "cart-scenarios": "node scripts/cart-scenarios.mjs",
+    "seed": "node scripts/seed-products.mjs",
+    "set-role": "node scripts/set-role.mjs",
+    "prune-refresh-tokens": "node scripts/prune-refresh-tokens.mjs",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "csurf": "^1.11.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.0.0",
+    "express-rate-limit": "^8.5.2",
+    "express-session": "^1.19.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^7.3.0",
+    "morgan": "^1.10.0",
+    "nodemailer": "^9.0.1",
+    "passport": "^0.7.0",
+    "passport-apple": "^2.0.2",
+    "passport-google-oauth20": "^2.0.0",
+    "pg": "^8.11.0",
+    "resend": "^6.14.0",
+    "stripe": "^17.4.0",
+    "node-fetch": "^3.4.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+  }
+}
