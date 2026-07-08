@@ -1,16 +1,299 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Hero from "../components/Hero.jsx";
 import SummaryBox from "../components/SummaryBox.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
 import { money } from "../../shared/lib/format.js";
 import { showToast } from "../../shared/lib/toast.js";
+import COUNTRIES, { PHONE_DATA, DIAL_CODES, getCountryByCode } from "../../shared/lib/countries.js";
+import { searchCities } from "../../shared/lib/cities.js";
+
+function CountryFlagImage({ src, alt }) {
+  return <img className="country-flag-img" src={src} alt={alt} loading="lazy" />;
+}
+
+function CountryAutocomplete({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef(null);
+  const prevValueRef = useRef(value);
+
+  // Sync query when value changes externally (e.g. clear)
+  useEffect(() => {
+    if (value !== prevValueRef.current) {
+      prevValueRef.current = value;
+      if (value) setQuery(value.name);
+      else setQuery("");
+    }
+  }, [value]);
+
+  const filtered = useMemo(() => {
+    if (!query) return [];
+    const q = query.toLowerCase();
+    return COUNTRIES.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q)
+    );
+  }, [query]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const select = useCallback((country) => {
+    onChange(country);
+    setQuery(country.name);
+    setOpen(false);
+  }, [onChange]);
+
+  return (
+    <div className="country-autocomplete" ref={ref}>
+      <div className="country-input-wrap">
+        {value && query === value.name && <CountryFlagImage src={value.flagSrc} alt={value.code} />}
+        <input
+          className="input country-input"
+          placeholder="Country"
+          value={query}
+          required
+          onChange={(e) => {
+            const val = e.target.value;
+            setQuery(val);
+            if (val) {
+              setOpen(true);
+              if (value && val !== value.name) onChange(null);
+            } else {
+              setOpen(false);
+              onChange(null);
+            }
+          }}
+          onBlur={() => {
+            setTimeout(() => {
+              // If nothing valid selected, clear the text
+              if (!value) setQuery("");
+            }, 200);
+          }}
+        />
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="country-dropdown">
+          {filtered.map((c) => (
+            <div
+              key={c.code}
+              className={`country-option ${value?.code === c.code ? "active" : ""}`}
+              onClick={() => select(c)}
+            >
+              <CountryFlagImage src={c.flagSrc} alt={c.code} />
+              <span className="country-name">{c.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {open && filtered.length === 0 && query && (
+        <div className="country-dropdown">
+          <div className="country-option no-result">"{query}" not found</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatPhone(value, format) {
+  const digits = value.replace(/\D/g, "");
+  if (!format || !digits) return digits;
+  // Get group sizes from format: "XX XXX XXX" → [2,3,3]
+  const groups = format.split(" ").map((g) => g.replace(/[^X]/g, "").length);
+  let result = [];
+  let pos = 0;
+  for (const size of groups) {
+    if (pos >= digits.length) break;
+    result.push(digits.slice(pos, pos + size));
+    pos += size;
+  }
+  return result.join(" ");
+}
+
+function CitySearch({ countryCode, value, onChange, onCountryChange }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef(null);
+  const cityChangingRef = useRef(false);
+
+  const filtered = useMemo(() => {
+    if (!query) return [];
+    return searchCities(query, countryCode);
+  }, [query, countryCode]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // When country changes from outside, reset city. But if WE triggered the country change, ignore.
+  useEffect(() => {
+    if (cityChangingRef.current) {
+      cityChangingRef.current = false;
+      return;
+    }
+    setQuery("");
+    onChange("");
+  }, [countryCode]);
+
+  const select = useCallback((city, code) => {
+    onChange(city);
+    setQuery(city);
+    setOpen(false);
+    if (code && onCountryChange) {
+      const country = getCountryByCode(code);
+      if (country) {
+        cityChangingRef.current = true;
+        onCountryChange(country);
+      }
+    }
+  }, [onChange, onCountryChange]);
+
+  return (
+    <div className="country-autocomplete" ref={ref}>
+      <div className="country-input-wrap">
+        <input
+          className="input country-input"
+          name="city"
+          placeholder="Search for a city..."
+          value={value || query}
+          required
+          onChange={(e) => {
+            const val = e.target.value;
+            setQuery(val);
+            if (val) { setOpen(true); if (value && val !== value) onChange(""); }
+            else { setOpen(false); onChange(""); }
+          }}
+          onBlur={() => {
+            setTimeout(() => {
+              if (!value) setQuery("");
+            }, 200);
+          }}
+        />
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="country-dropdown">
+          {filtered.map((c, i) => (
+            <div key={c.city + c.code + i} className={`country-option ${value === c.city ? "active" : ""}`} onClick={() => select(c.city, c.code)}>
+              {(() => { const cnt = getCountryByCode(c.code); return cnt ? <CountryFlagImage src={cnt.flagSrc} alt={cnt.code} /> : null; })()}
+              <span className="country-name">{c.city}, <small>{getCountryByCode(c.code)?.name || c.code}</small></span>
+            </div>
+          ))}
+        </div>
+      )}
+      {open && filtered.length === 0 && query && (
+        <div className="country-dropdown">
+          <div className="country-option no-result">"{query}" not found</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PhoneInput({ phoneCode, phoneFormat, onCodeChange, name }) {
+  const [open, setOpen] = useState(false);
+  const [displayValue, setDisplayValue] = useState("");
+  const ref = useRef(null);
+  const inputRef = useRef(null);
+  const cursorRef = useRef(0);
+  const current = PHONE_DATA.find((p) => p.dial === phoneCode) || PHONE_DATA.find((p) => p.code === "TN");
+
+  // Reset when format changes
+  useEffect(() => {
+    setDisplayValue("");
+  }, [phoneCode, phoneFormat]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const handleChange = (e) => {
+    const raw = e.target.value.replace(/\D/g, "");
+    const formatted = formatPhone(raw, phoneFormat);
+    setDisplayValue(formatted);
+    // Store raw digits for form submission
+    e.target._rawValue = raw;
+  };
+
+  const handleKeyDown = (e) => {
+    const allowed = ["Backspace", "Delete", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+    if (allowed.includes(e.key)) return;
+    if (e.ctrlKey || e.metaKey) return;
+    if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+  };
+
+  return (
+    <div className="phone-input-wrapper" ref={ref}>
+      <div className="phone-code-trigger" onClick={() => setOpen((o) => !o)}>
+        <span className="phone-trigger-flag">
+          {current ? <CountryFlagImage src={current.flagSrc} alt={current.code} /> : null}
+        </span>
+        <span className="phone-trigger-dial">{current?.dial || "+216"}</span>
+        <span className="phone-trigger-arrow">▼</span>
+      </div>
+      {open && (
+        <div className="country-dropdown phone-dropdown">
+          {PHONE_DATA.map((p) => (
+            <div
+              key={p.code}
+              className={`country-option ${current?.code === p.code ? "active" : ""}`}
+              onClick={() => {
+                onCodeChange(p.dial);
+                setOpen(false);
+              }}
+            >
+              <CountryFlagImage src={p.flagSrc} alt={p.code} />
+              <span className="country-name">{p.dial} {p.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        className="input phone-number-input"
+        name={name || "phoneNumber"}
+        type="tel"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        placeholder={phoneFormat || "XX XXX XXX"}
+        value={displayValue}
+        required
+        onKeyDown={handleKeyDown}
+        onChange={handleChange}
+        onBlur={() => {
+          const raw = displayValue.replace(/\D/g, "");
+          const expectedDigits = phoneFormat ? phoneFormat.split(" ").reduce((sum, g) => sum + g.replace(/[^X]/g, "").length, 0) : 0;
+          if (raw && expectedDigits > 0 && raw.length < expectedDigits) {
+            setDisplayValue("");
+          }
+        }}
+      />
+    </div>
+  );
+}
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const { user, cartLines, totals, clearCart, createOrder, createCheckoutSession, paymentProviders } = useStore();
 
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState(null);
+  const [selectedCity, setSelectedCity] = useState("");
+  const [phoneCode, setPhoneCode] = useState("+216");
+  const [phoneFormat, setPhoneFormat] = useState("XX XXX XXX");
   const redirectedRef = useRef(false);
   const enabledPaymentProviders = paymentProviders.filter((provider) => provider.enabled);
 
@@ -33,6 +316,29 @@ export default function CheckoutPage() {
     }
   }, [enabledPaymentProviders, paymentMethod]);
 
+  // When country changes, auto-update phone code & format
+  useEffect(() => {
+    if (selectedCountry) {
+      const dial = DIAL_CODES[selectedCountry.code];
+      if (dial) setPhoneCode(dial);
+      if (selectedCountry.phoneFormat) setPhoneFormat(selectedCountry.phoneFormat);
+    }
+  }, [selectedCountry]);
+
+  // When phone code changes directly (from PhoneInput dropdown), update format & sync country
+  useEffect(() => {
+    const found = PHONE_DATA.find((p) => p.dial === phoneCode);
+    if (found) {
+      if (found.phoneFormat) setPhoneFormat(found.phoneFormat);
+      // Sync country: find countries that share this dial code
+      const matching = COUNTRIES.filter((c) => DIAL_CODES[c.code] === phoneCode);
+      // If exactly one match, auto-update country (like Stripe/Shopify do)
+      if (matching.length === 1 && selectedCountry?.code !== matching[0].code) {
+        setSelectedCountry(matching[0]);
+      }
+    }
+  }, [phoneCode]);
+
   const submit = async (event) => {
     event.preventDefault();
     if (!cartLines.length) {
@@ -40,11 +346,35 @@ export default function CheckoutPage() {
       navigate("/store");
       return;
     }
+
+    // Validate country - must be selected from list
+    if (!selectedCountry) {
+      showToast("Please select a valid country from the list.", "error");
+      return;
+    }
+
+    // Validate city - must be selected from list
+    if (!selectedCity || !searchCities(selectedCity, selectedCountry?.code).some(c => c.city === selectedCity && c.code === selectedCountry?.code)) {
+      showToast("Please select a valid city from the list.", "error");
+      return;
+    }
+
+    // Validate phone - digit count based on country format
     const formValues = Object.fromEntries(new FormData(event.currentTarget));
+    const phoneDigits = formValues.phoneNumber ? formValues.phoneNumber.replace(/\D/g, "") : "";
+    const expectedDigits = phoneFormat ? phoneFormat.split(" ").reduce((sum, g) => sum + g.replace(/[^X]/g, "").length, 0) : 0;
+    if (!phoneDigits || (expectedDigits > 0 && phoneDigits.length < expectedDigits)) {
+      showToast(`Please enter a complete phone number (${expectedDigits} digits required).`, "error");
+      return;
+    }
+
     const billing = {
       ...formValues,
+      city: selectedCity,
+      country: selectedCountry?.name,
       customerName: `${formValues.firstName || ""} ${formValues.lastName || ""}`.trim() || user?.name,
-      customerEmail: user?.email || formValues.email
+      customerEmail: user?.email || formValues.email,
+      phone: `${phoneCode} ${phoneDigits}`.trim()
     };
 
     try {
@@ -61,7 +391,6 @@ export default function CheckoutPage() {
       console.error(err);
         const fallback = "Selected payment method is unavailable. Please try another or contact support.";
         showToast(err.message && typeof err.message === "string" ? err.message : fallback, "error");
-        // keep user on checkout so they can pick another method or retry
         navigate("/checkout", { replace: true });
     }
   };
@@ -89,17 +418,22 @@ export default function CheckoutPage() {
             </label>
             <label>
               Phone *
-              <input className="input" name="phone" placeholder="+216 XX XXX XXX" required />
+              <PhoneInput
+                phoneCode={phoneCode}
+                phoneFormat={phoneFormat}
+                onCodeChange={setPhoneCode}
+                name="phoneNumber"
+              />
             </label>
           </div>
           <div className="form-grid two">
             <label>
               Country *
-              <input className="input" name="country" placeholder="Country" required />
+              <CountryAutocomplete value={selectedCountry} onChange={setSelectedCountry} />
             </label>
             <label>
               City *
-              <input className="input" name="city" placeholder="City" required />
+              <CitySearch countryCode={selectedCountry?.code} value={selectedCity} onChange={setSelectedCity} onCountryChange={setSelectedCountry} />
             </label>
           </div>
           <div className="form-grid two">

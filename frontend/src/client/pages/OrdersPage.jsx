@@ -8,7 +8,7 @@ export default function OrdersPage() {
 
   return (
     <main className="main">
-      <Hero eyebrow="Orders" title="Order history." lead="Track your orders and delivery status." />
+      <Hero eyebrow="Orders" title="Order history" lead="Track your orders and delivery status." />
       <section className="panel">
         {orders.length ? (
           <table className="table">

@@ -31,7 +31,7 @@ export default function StorePage() {
     <main className="main">
       <Hero
         eyebrow="Smart infrastructure store"
-        title="Professional equipment for smart city and infrastructure projects."
+        title="Professional equipment for smart city and infrastructure projects"
         lead="Independent e-commerce website for URBA TECH INTER: Secure online ordering for professional smart city equipment, fast checkout, and reliable delivery."
         stats={[
           { value: String(products.length), label: t('products') },
