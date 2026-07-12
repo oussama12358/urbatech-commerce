@@ -4,7 +4,7 @@ function flagUrl(code) {
 }
 
 const COUNTRIES = [
-  { code: "AF", name: "Afghanistan", phoneFormat: "70 XXX XXXX" },
+  { code: "AF", name: "Afghanistan", phoneFormat: "XX XXX XXXX" },
   { code: "AL", name: "Albania", phoneFormat: "XX XXX XXXX" },
   { code: "DZ", name: "Algeria", phoneFormat: "XX XXX XXXX" },
   { code: "AD", name: "Andorra", phoneFormat: "XXX XXX" },

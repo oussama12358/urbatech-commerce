@@ -1,24 +1,31 @@
 let csrfToken = null;
 
-export async function fetchCsrfToken() {
-  const response = await fetch("/api/csrf-token", {
-    method: "GET",
-    credentials: "include"
-  });
-  if (!response.ok) {
-    throw new Error("Unable to fetch CSRF token");
-  }
-  const json = await response.json();
-  csrfToken = json.csrfToken;
-  return json;
+// Read CSRF token from cookie set by backend (csurf middleware)
+function getCsrfFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
+// Get CSRF token (from cache → cookie → fetch endpoint)
 async function getCsrfToken() {
-  if (csrfToken) {
+  if (csrfToken && csrfToken !== "disabled") return csrfToken;
+
+  const fromCookie = getCsrfFromCookie();
+  if (fromCookie && fromCookie !== "disabled") {
+    csrfToken = fromCookie;
     return csrfToken;
   }
-  const json = await fetchCsrfToken();
-  return json.csrfToken;
+
+  try {
+    const res = await fetch("/api/csrf-token", { method: "GET", credentials: "include" });
+    if (!res.ok) { csrfToken = "disabled"; return ""; }
+    const json = await res.json();
+    csrfToken = json.csrfToken;
+    return csrfToken || "";
+  } catch {
+    csrfToken = "disabled";
+    return "";
+  }
 }
 
 export function createApiClient(token) {
@@ -30,56 +37,46 @@ export function createApiClient(token) {
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     };
 
+    // Add CSRF token only for mutation requests (needed for /auth/refresh which uses cookies)
     if (method !== "GET" && method !== "HEAD") {
-      headers["X-CSRF-Token"] = await getCsrfToken();
+      const csrf = await getCsrfToken();
+      if (csrf) {
+        headers["X-CSRF-Token"] = csrf;
+      }
     }
 
     const requestOptions = { ...options, headers, credentials: "include" };
     delete requestOptions._csrfRetry;
     delete requestOptions._refreshAttempted;
     delete requestOptions._timeout;
-    // implement up to 2 network retries with exponential backoff
+
     const maxNetworkRetries = 3;
     let attempt = 0;
     let lastErr;
     while (attempt <= maxNetworkRetries) {
       try {
-        // set up timeout for this fetch
         const controller = new AbortController();
         requestOptions.signal = controller.signal;
-        const timeoutMs = options._timeout || 5000;
+        const timeoutMs = options._timeout || 15000;
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        // eslint-disable-next-line no-await-in-loop
         const response = await fetch(`/api${path}`, requestOptions).finally(() => clearTimeout(timeoutId));
-        // on success, break the loop
         lastErr = null;
         attempt = maxNetworkRetries + 1;
-        // use the response outside the loop
         var finalResponse = response;
         break;
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[api] network error on', path, err && err.message, { path, method, attempt });
         lastErr = err;
         attempt += 1;
         if (attempt > maxNetworkRetries) break;
-        // exponential backoff: 150ms, 400ms
-        // eslint-disable-next-line no-await-in-loop
         await new Promise((r) => setTimeout(r, attempt === 1 ? 150 : 400));
       }
     }
 
     if (lastErr) throw lastErr;
 
-    // log request id from response headers if present
-    try {
-      const respRequestId = finalResponse.headers.get('x-request-id');
-      if (respRequestId) {
-        // eslint-disable-next-line no-console
-        console.log('[api] response requestId=', respRequestId, path);
-      }
-    } catch (e) {}
     if (finalResponse.status === 403 && method !== "GET" && !options._csrfRetry) {
+      // CSRF token might be invalid - clear and retry once
       csrfToken = null;
       return apiFetch(path, { ...options, _csrfRetry: true });
     }
@@ -98,7 +95,7 @@ export function createApiClient(token) {
             return apiFetch(path, retryOptions);
           }
         } catch (refreshError) {
-          // ignore refresh failure and fall through to the original error
+          // ignore
         }
       }
 

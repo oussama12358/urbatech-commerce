@@ -1,11 +1,12 @@
 import { NavLink } from "react-router-dom";
-import { BarChart3, Boxes, Gauge, ListOrdered, Settings, Tags, Truck, UsersRound } from "lucide-react";
+import { BadgeDollarSign, BarChart3, Boxes, Gauge, ListOrdered, Settings, Tags, Truck, UsersRound } from "lucide-react";
 
 const links = [
   { to: "/admin/dashboard", label: "Dashboard", icon: Gauge },
   { to: "/admin/products", label: "Products", icon: Boxes },
   { to: "/admin/orders", label: "Orders", icon: ListOrdered },
   { to: "/admin/payments", label: "Payments", icon: Settings },
+  { to: "/admin/settlements", label: "Settlements", icon: BadgeDollarSign },
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/customers", label: "Customers", icon: UsersRound },
   { to: "/admin/categories", label: "Categories", icon: Tags },

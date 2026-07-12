@@ -52,3 +52,38 @@ export async function releaseStockForItems(items, orderId) {
     );
   }
 }
+
+export async function releaseExpiredStockReservations({ olderThanMinutes = 60, limit = 100 } = {}) {
+  const orders = await getCollection("orders");
+  const orderItems = await getCollection("order_items");
+  const cutoff = new Date(Date.now() - Number(olderThanMinutes || 60) * 60 * 1000);
+  const rows = await orders
+    .find({
+      payment_status: "pending",
+      stock_reserved: true,
+      stock_released_at: { $exists: false },
+      created_at: { $lte: cutoff }
+    })
+    .sort({ created_at: 1 })
+    .limit(Number(limit || 100))
+    .toArray();
+
+  const released = [];
+  for (const order of rows) {
+    const items = await orderItems.find({ order_id: order.id }).toArray();
+    await releaseStockForItems(items, order.id);
+    await orders.updateOne(
+      { id: order.id },
+      {
+        $set: {
+          status: "Expired",
+          payment_status: "expired",
+          stock_released_at: new Date()
+        }
+      }
+    );
+    released.push(order.id);
+  }
+
+  return { released_count: released.length, released };
+}

@@ -29,6 +29,10 @@ export default function Reports() {
     ["Orders", report.total_orders],
     ["Paid orders", report.paid_orders],
     ["Supplier dispatched", report.supplier_dispatched_orders],
+    ["Payout pending", money(report.supplier_payout_pending || 0)],
+    ["Payout paid", money(report.supplier_payout_paid || 0)],
+    ["Payout held", money(report.supplier_payout_held || 0)],
+    ["Payout cancelled", money(report.supplier_payout_cancelled || 0)],
     ["Fulfillment rate", `${report.fulfillment_rate}%`],
     ["Active products", report.active_products],
     ["Connected suppliers", report.connected_suppliers]

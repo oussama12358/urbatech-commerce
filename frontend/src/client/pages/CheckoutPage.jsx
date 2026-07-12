@@ -49,6 +49,8 @@ function CountryAutocomplete({ value, onChange }) {
     setOpen(false);
   }, [onChange]);
 
+  const blurTimerRef = useRef(null);
+
   return (
     <div className="country-autocomplete" ref={ref}>
       <div className="country-input-wrap">
@@ -70,10 +72,15 @@ function CountryAutocomplete({ value, onChange }) {
             }
           }}
           onBlur={() => {
-            setTimeout(() => {
-              // If nothing valid selected, clear the text
+            blurTimerRef.current = setTimeout(() => {
               if (!value) setQuery("");
-            }, 200);
+            }, 300);
+          }}
+          onFocus={() => {
+            if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+            // Show all countries on focus when nothing selected
+            if (!value) setQuery("");
+            setOpen(true);
           }}
         />
       </div>
@@ -83,7 +90,10 @@ function CountryAutocomplete({ value, onChange }) {
             <div
               key={c.code}
               className={`country-option ${value?.code === c.code ? "active" : ""}`}
-              onClick={() => select(c)}
+              onMouseDown={(e) => {
+                e.preventDefault(); // prevents onBlur from firing before selection
+                select(c);
+              }}
             >
               <CountryFlagImage src={c.flagSrc} alt={c.code} />
               <span className="country-name">{c.name}</span>
@@ -204,7 +214,7 @@ function PhoneInput({ phoneCode, phoneFormat, onCodeChange, name }) {
   const ref = useRef(null);
   const inputRef = useRef(null);
   const cursorRef = useRef(0);
-  const current = PHONE_DATA.find((p) => p.dial === phoneCode) || PHONE_DATA.find((p) => p.code === "TN");
+  const current = PHONE_DATA.find((p) => p.dial === phoneCode) || null;
 
   // Reset when format changes
   useEffect(() => {
@@ -241,7 +251,7 @@ function PhoneInput({ phoneCode, phoneFormat, onCodeChange, name }) {
         <span className="phone-trigger-flag">
           {current ? <CountryFlagImage src={current.flagSrc} alt={current.code} /> : null}
         </span>
-        <span className="phone-trigger-dial">{current?.dial || "+216"}</span>
+        <span className="phone-trigger-dial">{current?.dial || "Country code"}</span>
         <span className="phone-trigger-arrow">▼</span>
       </div>
       {open && (
@@ -268,7 +278,7 @@ function PhoneInput({ phoneCode, phoneFormat, onCodeChange, name }) {
         type="tel"
         inputMode="numeric"
         pattern="[0-9]*"
-        placeholder={phoneFormat || "XX XXX XXX"}
+          placeholder={phoneFormat || "Phone number"}
         value={displayValue}
         required
         onKeyDown={handleKeyDown}
@@ -292,8 +302,8 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [selectedCity, setSelectedCity] = useState("");
-  const [phoneCode, setPhoneCode] = useState("+216");
-  const [phoneFormat, setPhoneFormat] = useState("XX XXX XXX");
+  const [phoneCode, setPhoneCode] = useState("");
+  const [phoneFormat, setPhoneFormat] = useState("");
   const redirectedRef = useRef(false);
   const enabledPaymentProviders = paymentProviders.filter((provider) => provider.enabled);
 
@@ -316,12 +326,15 @@ export default function CheckoutPage() {
     }
   }, [enabledPaymentProviders, paymentMethod]);
 
-  // When country changes, auto-update phone code & format
+  // When country changes, auto-update phone code & format, or reset if null
   useEffect(() => {
     if (selectedCountry) {
       const dial = DIAL_CODES[selectedCountry.code];
       if (dial) setPhoneCode(dial);
       if (selectedCountry.phoneFormat) setPhoneFormat(selectedCountry.phoneFormat);
+    } else {
+      setPhoneCode("");
+      setPhoneFormat("");
     }
   }, [selectedCountry]);
 

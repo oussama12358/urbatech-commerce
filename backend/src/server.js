@@ -13,12 +13,11 @@ import crypto from "crypto";
 import { apiRouter } from "./routes.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { connectMongo } from "./db/mongo.js";
-import { syncAllConnectedSuppliers } from "./modules/suppliers/supplier.service.js";
+import { startBackgroundJobs } from "./modules/jobs/background-jobs.js";
 
 const app = express();
 
 const isProduction = process.env.NODE_ENV === "production";
-
 
 // Relax rate limiting in development so HMR / repeated reloads don't trigger 429s
 const apiLimiter = rateLimit({
@@ -36,7 +35,6 @@ app.use((req, res, next) => {
   const id = incoming || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2,9)}`);
   req.requestId = id;
   res.setHeader('X-Request-Id', id);
-  // eslint-disable-next-line no-console
   console.log(`[req:${id}] ${req.method} ${req.originalUrl}`);
   next();
 });
@@ -68,8 +66,15 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 app.use(apiLimiter);
+
+// CSRF protection - only for routes that use cookie-based auth
+// Regular API endpoints use JWT Bearer tokens (Authorization header)
+// which are immune to CSRF. Only /auth/refresh uses HttpOnly cookie.
 const csrfProtection = csurf({ cookie: true });
+
+// Apply CSRF protection selectively to cookie-dependent routes only
 app.use((req, res, next) => {
+  // Skip CSRF for webhooks and public endpoints
   if (
     req.path.startsWith("/api/suppliers/webhooks/") ||
     req.path === "/api/checkout/webhook" ||
@@ -78,12 +83,29 @@ app.use((req, res, next) => {
     next();
     return;
   }
-  csrfProtection(req, res, next);
+  
+  // Only apply CSRF to /api/auth/refresh which uses cookies
+  // JWT Bearer endpoints don't need CSRF
+  if (req.path === "/api/auth/refresh") {
+    return csrfProtection(req, res, next);
+  }
+  
+  // For csrf-token endpoint, we still need the token function
+  if (req.path === "/api/csrf-token") {
+    return csrfProtection(req, res, next);
+  }
+  
+  next();
 });
 
 app.use((req, res, next) => {
+  // Set XSRF-TOKEN cookie for the frontend (only if csrfToken is available)
   if (typeof req.csrfToken === "function") {
-    res.cookie("XSRF-TOKEN", req.csrfToken());
+    try {
+      res.cookie("XSRF-TOKEN", req.csrfToken(), { sameSite: "lax", httpOnly: false });
+    } catch (e) {
+      // ignore
+    }
   }
   next();
 });
@@ -91,36 +113,13 @@ app.use((req, res, next) => {
 app.use("/api", apiRouter);
 app.use(errorHandler);
 
-function scheduleSupplierSync() {
-  const interval = env.supplierSyncIntervalMs;
-  const now = Date.now();
-  const initialDelay = interval - (now % interval);
-
-  setTimeout(() => {
-    syncAllConnectedSuppliers().catch((err) => {
-      console.error("Supplier sync failed:", err.message || err);
-    });
-
-    setInterval(() => {
-      syncAllConnectedSuppliers().catch((err) => {
-        console.error("Supplier sync failed:", err.message || err);
-      });
-    }, interval);
-  }, initialDelay);
-
-  console.log(`Supplier sync scheduled every ${Math.round(interval / 60000)} minutes, next run in ${Math.round(initialDelay / 60000)} minutes.`);
-}
-
 // Global error handlers for better visibility and graceful shutdown
 process.on('unhandledRejection', (reason, promise) => {
-  // eslint-disable-next-line no-console
   console.error('[unhandledRejection] reason:', reason);
 });
 
 process.on('uncaughtException', (err) => {
-  // eslint-disable-next-line no-console
   console.error('[uncaughtException] error:', err && (err.stack || err.message || err));
-  // Attempt graceful shutdown
   try {
     serverCleanup().finally(() => process.exit(1));
   } catch (e) {
@@ -129,12 +128,13 @@ process.on('uncaughtException', (err) => {
 });
 
 let server;
+let backgroundJobTimers = [];
 connectMongo()
   .then(() => {
     server = app.listen(env.port, () => {
       console.log(`URBA TECH commerce API listening on http://127.0.0.1:${env.port}/api`);
     });
-    scheduleSupplierSync();
+    backgroundJobTimers = startBackgroundJobs();
   })
   .catch((err) => {
     console.error("Failed to connect to MongoDB:", err);
@@ -142,21 +142,15 @@ connectMongo()
   });
 
 async function serverCleanup() {
-  // close server and db connections
   try {
+    backgroundJobTimers.forEach((timer) => clearInterval(timer));
     if (server && typeof server.close === 'function') {
-      // eslint-disable-next-line no-console
       console.log('Shutting down HTTP server...');
       await new Promise((resolve) => server.close(resolve));
     }
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) {}
   try {
-    // eslint-disable-next-line no-console
     console.log('Closing MongoDB connection...');
     await (await connectMongo()).close();
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) {}
 }

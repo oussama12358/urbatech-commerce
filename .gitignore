@@ -38,6 +38,9 @@ Thumbs.db
 .idea/
 *.swp
 
+# Backups
+backend/backups/
+
 # Project-specific local files
 cookies.txt
 frontend/tmp_*.jsx

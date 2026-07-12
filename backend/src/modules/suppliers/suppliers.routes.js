@@ -17,7 +17,7 @@ import {
 
 const supplierSchema = z.object({
   company_name: z.string().min(2),
-  adapter: z.enum(["universal", "generic", "mock", "cj"]).default("universal"),
+  adapter: z.enum(["universal", "generic", "cj"]).default("universal"),
   api_url: z.string().min(3),
   auth_mode: z.enum(["bearer", "api-key", "basic", "both", "oauth", "none"]).default("bearer"),
   api_key: z.string().optional().default(""),
@@ -34,6 +34,10 @@ const supplierSchema = z.object({
   order_response_mapping: z.record(z.any()).optional().default({}),
   order_status_mapping: z.record(z.any()).optional().default({}),
   webhook_mapping: z.record(z.any()).optional().default({}),
+  payout_method: z.enum(["manual", "bank_transfer", "wise", "stripe_connect", "paypal_payout"]).default("manual"),
+  payout_email: z.string().optional().default(""),
+  paypal_email: z.string().optional().default(""),
+  stripe_account_id: z.string().optional().default(""),
   supports_products: z.boolean().default(true),
   supports_tracking: z.boolean().default(true),
   supports_orders: z.boolean().default(true),

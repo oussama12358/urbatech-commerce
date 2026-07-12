@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getAllOrders, getOrderById } from "../orders/orders.routes.js";
 import { getCollection } from "../../db/mongo.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { releaseExpiredStockReservations } from "../orders/inventory.service.js";
 import { listRefunds, refundOrder } from "../refunds/refund.service.js";
 import {
   ensureSupplierSettlementsForOrder,
@@ -59,6 +60,19 @@ adminRouter.get("/orders/:id", async (req, res, next) => {
 adminRouter.post("/orders/:id/refund", async (req, res, next) => {
   try {
     res.json({ data: await refundOrder(req.params.id, req.body || {}) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post("/orders/release-expired-stock", async (req, res, next) => {
+  try {
+    res.json({
+      data: await releaseExpiredStockReservations({
+        olderThanMinutes: Number(req.body?.olderThanMinutes || 60),
+        limit: Number(req.body?.limit || 100)
+      })
+    });
   } catch (err) {
     next(err);
   }
@@ -150,6 +164,51 @@ adminRouter.get("/reports", async (_req, res, next) => {
         supplier_payout_held: settlements.held,
         supplier_payout_cancelled: settlements.cancelled,
         fulfillment_rate: orders.length ? Math.round((dispatchedOrders.length / orders.length) * 100) : 0
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.get("/monitoring", async (_req, res, next) => {
+  try {
+    const orders = await getCollection("orders");
+    const suppliers = await getCollection("suppliers");
+    const dispatchJobs = await getCollection("supplier_dispatch_jobs");
+    const settlements = await getCollection("supplier_settlements");
+    const refunds = await getCollection("refunds");
+
+    const [
+      dispatchFailed,
+      dispatchPending,
+      supplierOffline,
+      payoutFailed,
+      payoutHeld,
+      refundManual,
+      refundFailed,
+      webhookRecentlySynced
+    ] = await Promise.all([
+      dispatchJobs.countDocuments({ status: "failed" }),
+      dispatchJobs.countDocuments({ status: "pending" }),
+      suppliers.countDocuments({ status: { $ne: "Connected" } }),
+      settlements.countDocuments({ status: "failed" }),
+      settlements.countDocuments({ status: "held" }),
+      refunds.countDocuments({ status: "manual_required" }),
+      refunds.countDocuments({ status: "failed" }),
+      orders.countDocuments({ supplier_status_synced_at: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } })
+    ]);
+
+    res.json({
+      data: {
+        dispatch_failed: dispatchFailed,
+        dispatch_pending: dispatchPending,
+        suppliers_offline: supplierOffline,
+        payout_failed: payoutFailed,
+        payout_held: payoutHeld,
+        refund_manual_required: refundManual,
+        refund_failed: refundFailed,
+        supplier_status_updates_24h: webhookRecentlySynced
       }
     });
   } catch (err) {

@@ -251,56 +251,10 @@ export class SupplierAdapter {
   }
 }
 
-export class MockSupplierAdapter extends SupplierAdapter {
-  async testConnection() {
-    return { ok: true, api_health: "Online" };
-  }
-
-  async syncProducts() {
-    return [
-      {
-        supplier_product_id: "SUP12345",
-        name: "Bosch Drill",
-        description: "Professional cordless drill from supplier catalogue.",
-        price: 120,
-        cost_price: 80,
-        stock: 25,
-        status: "In stock",
-        category: "Tools",
-        specs: ["18V", "Cordless", "Professional"],
-        images: []
-      }
-    ];
-  }
-
-  async createOrder(orderPayload) {
-    return {
-      supplier_order_id: `SUP-${Date.now().toString().slice(-6)}`,
-      tracking: `DHL${Date.now().toString().slice(-6)}`,
-      status: "processing",
-      invoice_number: `INV-${Date.now().toString().slice(-6)}`,
-      accepted_items: orderPayload.items?.length || 0
-    };
-  }
-
-  async getOrderStatus() {
-    return {
-      status: "shipped",
-      tracking: `DHL${Date.now().toString().slice(-6)}`,
-      carrier: "DHL"
-    };
-  }
-
-  async cancelOrder() {
-    return { cancelled: true, status: "cancelled" };
-  }
-}
-
 export class CjDropshippingAdapter extends SupplierAdapter {}
 
 export function getSupplierAdapter(supplier) {
   const adapter = (supplier.adapter || "generic").toLowerCase();
-  if (adapter === "mock" || supplier.api_url?.startsWith("mock://")) return new MockSupplierAdapter(supplier);
   if (adapter === "cj" || adapter === "cjdropshipping") return new CjDropshippingAdapter(supplier);
   return new SupplierAdapter(supplier);
 }

@@ -30,6 +30,11 @@ export const env = {
   paypalWebhookId: process.env.PAYPAL_WEBHOOK_ID || "",
   // Supplier sync interval: use MS directly, or fallback to minutes. Default is 60 minutes.
   supplierSyncIntervalMs: Number(process.env.SUPPLIER_SYNC_INTERVAL_MS || 0) || (Number(process.env.SUPPLIER_SYNC_INTERVAL_MINUTES || 0) * 60 * 1000) || 60 * 60 * 1000,
+  supplierRetryIntervalMs: Number(process.env.SUPPLIER_RETRY_INTERVAL_MS || 0) || (Number(process.env.SUPPLIER_RETRY_INTERVAL_MINUTES || 0) * 60 * 1000) || 5 * 60 * 1000,
+  supplierStatusSyncIntervalMs: Number(process.env.SUPPLIER_STATUS_SYNC_INTERVAL_MS || 0) || (Number(process.env.SUPPLIER_STATUS_SYNC_INTERVAL_MINUTES || 0) * 60 * 1000) || 15 * 60 * 1000,
+  expiredStockReleaseIntervalMs: Number(process.env.EXPIRED_STOCK_RELEASE_INTERVAL_MS || 0) || (Number(process.env.EXPIRED_STOCK_RELEASE_INTERVAL_MINUTES || 0) * 60 * 1000) || 10 * 60 * 1000,
+  expiredStockReservationMinutes: Number(process.env.EXPIRED_STOCK_RESERVATION_MINUTES || 60),
+  backgroundJobsEnabled: process.env.BACKGROUND_JOBS_ENABLED !== "false",
   // Set to "true" to completely disable email verification flow (signup, verify, login)
   disableEmailVerification: process.env.DISABLE_EMAIL_VERIFICATION === "false" || process.env.DISABLE_EMAIL_VERIFICATION === "1",
   // Rotate JWT signing keys by keeping previous secrets for verification.

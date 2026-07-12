@@ -24,7 +24,8 @@ apiRouter.get("/health", (_req, res) => {
 });
 
 apiRouter.get("/csrf-token", (req, res) => {
-  res.json({ csrfToken: req.csrfToken() });
+  // CSRF is disabled - the app uses JWT Bearer tokens for auth
+  res.json({ csrfToken: "disabled" });
 });
 
 apiRouter.use("/auth", authRouter);
