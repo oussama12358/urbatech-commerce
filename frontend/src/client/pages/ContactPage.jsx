@@ -1,7 +1,9 @@
 import { Link } from "react-router-dom";
 import Hero from "../components/Hero.jsx";
+import { t, useLocale } from "../../i18n.js";
 
 export default function ContactPage() {
+  useLocale();
   const contactEmail = "contact@urbatechinter.com";
   const gmailLink = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(contactEmail)}`;
   const whatsappNumber = "+216 20 731 931";
@@ -10,22 +12,22 @@ export default function ContactPage() {
   return (
     <main className="main">
       <Hero
-        eyebrow="Support"
-        title="Need help with your checkout?"
-        lead="Our team is here to help with payment, delivery, and account questions."
+        eyebrow={t("support")}
+        title={t("contactHelpTitle")}
+        lead={t("contactHelpLead")}
       />
       <section className="panel">
-        <h2>Contact support</h2>
+        <h2>{t("contactSupport")}</h2>
         <p className="desc">
-          Have a question about your order or payment? Reach out and we’ll respond as quickly as possible.
+          {t("contactHelpDescription")}
         </p>
         <div className="support-badge-row">
-          <span className="support-badge">Live support available</span>
+          <span className="support-badge">{t("liveSupportAvailable")}</span>
         </div>
         <div className="contact-cards">
           <div className="contact-card">
             <div>
-              <span>Email</span>
+              <span>{t("email")}</span>
               <strong>
                 <a href={gmailLink} target="_blank" rel="noreferrer" className="contact-link link-button">
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
@@ -38,7 +40,7 @@ export default function ContactPage() {
           </div>
           <div className="contact-card">
             <div>
-              <span>WhatsApp</span>
+              <span>{t("whatsapp")}</span>
               <strong>
                 <a href={whatsappLink} target="_blank" rel="noreferrer" className="contact-link link-button">
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
@@ -52,10 +54,10 @@ export default function ContactPage() {
           </div>
         </div>
         <div className="panel-note">
-          <p>If you need faster support, include your order number and checkout details in the message.</p>
+          <p>{t("contactSupportNote")}</p>
         </div>
         <Link to="/checkout" className="secondary-btn" style={{ display: "inline-flex", marginTop: "16px" }}>
-          Back to checkout
+          {t("backToCheckout")}
         </Link>
       </section>
     </main>

@@ -2,9 +2,11 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useState } from "react";
 import ConfirmDialog from "../../shared/components/ConfirmDialog.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
+import { t, useLocale } from "../../i18n.js";
 
 export default function EditProduct() {
   const { id } = useParams();
+  useLocale();
   const navigate = useNavigate();
   const { products, categories, suppliers, updateProduct, deleteProduct } = useStore();
   const [error, setError] = useState("");
@@ -50,25 +52,25 @@ export default function EditProduct() {
     <main className="admin-main">
       <div className="admin-page-head">
         <div>
-          <p className="eyebrow">Catalogue</p>
-          <h2>Edit product</h2>
+          <p className="eyebrow">{t("catalogue")}</p>
+          <h2>{t("editProductTitle")}</h2>
         </div>
-        <Link className="secondary-btn" to="/admin/products">Back to products</Link>
+        <Link className="secondary-btn" to="/admin/products">{t("backToProducts")}</Link>
       </div>
       {!product ? (
-        <div className="empty">Product not found.</div>
+        <div className="empty">{t("productNotFound")}</div>
       ) : (
         <form className="panel form-grid" onSubmit={submit}>
           {error && <div className="error-message">{error}</div>}
-          <input className="input" name="name" defaultValue={product.name} placeholder="Product name" required />
+          <input className="input" name="name" defaultValue={product.name} placeholder={t("productNamePlaceholder")} required />
           <div className="form-grid two">
             <select className="select" name="supplier_id" defaultValue={product.supplier_id || ""}>
-              <option value="">No supplier</option>
+              <option value="">{t("noSupplier")}</option>
               {suppliers.map((supplier) => (
                 <option key={supplier.id} value={supplier.id}>{supplier.company_name}</option>
               ))}
             </select>
-            <input className="input" name="supplier_product_id" defaultValue={product.supplier_product_id || ""} placeholder="Supplier Product ID" />
+            <input className="input" name="supplier_product_id" defaultValue={product.supplier_product_id || ""} placeholder={t("supplierProductIdPlaceholder")} />
           </div>
           <div className="form-grid two">
             <select className="select" name="category" defaultValue={product.category || categories[0]?.name || ""}>
@@ -76,45 +78,45 @@ export default function EditProduct() {
                 <option key={category.id} value={category.name}>{category.name}</option>
               ))}
             </select>
-            <input className="input" name="newCategory" placeholder="Or new category" />
+            <input className="input" name="newCategory" placeholder={t("orNewCategoryPlaceholder")} />
           </div>
           <div className="form-grid two">
-            <input className="input" name="price" type="number" min="0" step="0.01" defaultValue={product.price} placeholder="Price" required />
-            <input className="input" name="cost_price" type="number" min="0" step="0.01" defaultValue={product.cost_price || 0} placeholder="Cost price" />
+            <input className="input" name="price" type="number" min="0" step="0.01" defaultValue={product.price} placeholder={t("pricePlaceholder")} required />
+            <input className="input" name="cost_price" type="number" min="0" step="0.01" defaultValue={product.cost_price || 0} placeholder={t("costPricePlaceholder")} />
           </div>
           <div className="form-grid two">
-            <input className="input" name="stock" type="number" min="0" defaultValue={product.stock} placeholder="Stock" required />
-            <input className="input" name="margin" type="number" min="0" step="0.01" defaultValue={product.margin} placeholder="Margin %" required />
+            <input className="input" name="stock" type="number" min="0" defaultValue={product.stock} placeholder={t("stockPlaceholder")} required />
+            <input className="input" name="margin" type="number" min="0" step="0.01" defaultValue={product.margin} placeholder={t("marginPlaceholder")} required />
           </div>
           <label className="inline-check">
-            <input type="checkbox" name="auto_sync" defaultChecked={Boolean(product.auto_sync)} /> Auto Sync
+            <input type="checkbox" name="auto_sync" defaultChecked={Boolean(product.auto_sync)} /> {t("autoSync")}
           </label>
           <div className="form-grid two">
             <select className="select" name="status" defaultValue={product.status || "In stock"}>
-              <option>In stock</option>
-              <option>Low stock</option>
-              <option>Out of stock</option>
-              <option>Preorder</option>
+              <option value="In stock">{t("inStockStatus")}</option>
+              <option value="Low stock">{t("lowStockStatus")}</option>
+              <option value="Out of stock">{t("outOfStockStatus")}</option>
+              <option value="Preorder">{t("preorderStatus")}</option>
             </select>
           </div>
           <div className="form-grid two">
-            <input className="input" name="lead" defaultValue={product.lead || ""} placeholder="Lead time" />
-            <input className="input" name="warranty" defaultValue={product.warranty || ""} placeholder="Warranty" />
+            <input className="input" name="lead" defaultValue={product.lead || ""} placeholder={t("leadTimePlaceholder")} />
+            <input className="input" name="warranty" defaultValue={product.warranty || ""} placeholder={t("warranty")} />
           </div>
-          <input className="input" name="specs" defaultValue={(product.specs || []).join(", ")} placeholder="Specs separated by commas" />
-          <textarea name="desc" defaultValue={product.desc || product.description || ""} placeholder="Short description" />
+          <input className="input" name="specs" defaultValue={(product.specs || []).join(", ")} placeholder={t("specsPlaceholder")} />
+          <textarea name="desc" defaultValue={product.desc || product.description || ""} placeholder={t("shortDescriptionPlaceholder")} />
           <div className="form-grid two">
-            <button className="primary-btn" type="submit">Save changes</button>
-            <button className="danger-btn" type="button" onClick={() => setConfirmDeleteOpen(true)}>Delete product</button>
+            <button className="primary-btn" type="submit">{t("saveChanges")}</button>
+            <button className="danger-btn" type="button" onClick={() => setConfirmDeleteOpen(true)}>{t("deleteProduct")}</button>
           </div>
         </form>
       )}
       <ConfirmDialog
         open={confirmDeleteOpen}
         danger
-        title="Delete product"
-        message={product ? `Delete "${product.name}" from the catalogue?` : ""}
-        confirmLabel="Delete"
+        title={t("deleteProduct")}
+        message={product ? t("deleteProductConfirm") : ""}
+        confirmLabel={t("deleteProduct")}
         onCancel={() => setConfirmDeleteOpen(false)}
         onConfirm={handleDelete}
       />

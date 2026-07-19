@@ -1,8 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
 import { Facebook, Instagram, Linkedin, Mail, MapPin, Phone, Twitter } from "lucide-react";
 import { useStore } from "../../store/StoreContext.jsx";
+import { t, useLocale } from "../../i18n.js";
 
 export default function Footer() {
+  useLocale();
   const { settings, user } = useStore();
   const location = useLocation();
   const isStorePage = location.pathname === "/store";
@@ -26,7 +28,7 @@ export default function Footer() {
 
           <a className="footer-address" href={mapUrl} target="_blank" rel="noreferrer">
             <MapPin />
-            <span>05, Ain Berda 7000 Bizerte North — Tunisia</span>
+            <span>{t("footerAddress")}</span>
           </a>
 
           <div className="social-links" aria-label="Social links">
@@ -38,7 +40,7 @@ export default function Footer() {
         </div>
 
         <div className="footer-col">
-          <h3>Quick Links</h3>
+          <h3>{t("footerQuickLinks")}</h3>
           <nav className="footer-list">
             {
               (() => {
@@ -47,24 +49,24 @@ export default function Footer() {
 
                 // Store/product related pages
                 if (path.startsWith("/store") || path.startsWith("/product")) {
-                  if (settings.storefrontEnabled) links.push({ to: "/store", label: "Store" });
-                  if (settings.storefrontEnabled) links.push({ to: "/cart", label: "Cart" });
-                  if (user) links.push({ to: "/orders", label: "Orders" });
-                  if (user) links.push({ to: "/account", label: "Account" });
+                  if (settings.storefrontEnabled) links.push({ to: "/store", label: t("store") });
+                  if (settings.storefrontEnabled) links.push({ to: "/cart", label: t("cart") });
+                  if (user) links.push({ to: "/orders", label: t("orders") });
+                  if (user) links.push({ to: "/account", label: t("account") });
                 } else if (path.startsWith("/cart") || path.startsWith("/checkout")) {
-                  if (settings.storefrontEnabled) links.push({ to: "/cart", label: "Cart" });
-                  if (settings.storefrontEnabled) links.push({ to: "/store", label: "Store" });
-                  if (user) links.push({ to: "/orders", label: "Orders" });
-                  if (user) links.push({ to: "/account", label: "Account" });
+                  if (settings.storefrontEnabled) links.push({ to: "/cart", label: t("cart") });
+                  if (settings.storefrontEnabled) links.push({ to: "/store", label: t("store") });
+                  if (user) links.push({ to: "/orders", label: t("orders") });
+                  if (user) links.push({ to: "/account", label: t("account") });
                 } else if (path.startsWith("/account") || path.startsWith("/orders")) {
-                  if (settings.storefrontEnabled) links.push({ to: "/store", label: "Store" });
-                  if (settings.storefrontEnabled) links.push({ to: "/cart", label: "Cart" });
-                  links.push({ to: "/account", label: "Account" });
-                  links.push({ to: "/orders", label: "Orders" });
+                  if (settings.storefrontEnabled) links.push({ to: "/store", label: t("store") });
+                  if (settings.storefrontEnabled) links.push({ to: "/cart", label: t("cart") });
+                  links.push({ to: "/account", label: t("account") });
+                  links.push({ to: "/orders", label: t("orders") });
                 } else {
                   // Default: show store + account/login depending on auth
-                  if (settings.storefrontEnabled) links.push({ to: "/store", label: "Store" });
-                  if (settings.storefrontEnabled) links.push({ to: "/cart", label: "Cart" });
+                  if (settings.storefrontEnabled) links.push({ to: "/store", label: t("store") });
+                  if (settings.storefrontEnabled) links.push({ to: "/cart", label: t("cart") });
                 }
 
                 // Render links
@@ -74,11 +76,11 @@ export default function Footer() {
                       <Link key={l.to} to={l.to}>{l.label}</Link>
                     ))}
                     {path.startsWith("/account") || path.startsWith("/orders") ? (
-                      user ? <Link to="/logout">Logout</Link> : <Link to="/login">Login</Link>
+                      user ? <Link to="/logout">{t("logout")}</Link> : <Link to="/login">{t("login")}</Link>
                     ) : null}
                     {/* For non-account pages, always show auth link at end */}
                     {!path.startsWith("/account") && !path.startsWith("/orders") && (
-                      user ? <Link to="/logout">Logout</Link> : <Link to="/login">Login</Link>
+                      user ? <Link to="/logout">{t("logout")}</Link> : <Link to="/login">{t("login")}</Link>
                     )}
                   </>
                 );
@@ -88,22 +90,22 @@ export default function Footer() {
         </div>
 
         <div className="footer-col">
-          <h3>Services</h3>
+          <h3>{t("footerServices")}</h3>
           <ul className="footer-list">
-            <li>Urban Planning Management</li>
-            <li>Construction Engineering</li>
-            <li>Spatial Infrastructure</li>
-            <li>Marketing Design</li>
-            <li>Training &amp; Tutorials</li>
+            <li>{t("servicesUrbanPlanning")}</li>
+            <li>{t("servicesConstruction")}</li>
+            <li>{t("servicesInfrastructure")}</li>
+            <li>{t("servicesMarketing")}</li>
+            <li>{t("servicesTraining")}</li>
           </ul>
         </div>
 
         <div className="footer-col">
-          <h3>Contact</h3>
+          <h3>{t("footerContact")}</h3>
           <div className="footer-contact">
             <a className="footer-contact-row" href={mapUrl} target="_blank" rel="noreferrer">
               <MapPin />
-              <span>05, Ain Berda 7000 Bizerte North — Tunisia</span>
+              <span>{t("footerAddress")}</span>
             </a>
             <p>
               <Phone />
@@ -118,7 +120,7 @@ export default function Footer() {
       </div>
 
       <div className="footer-bottom">
-        © 2026 URBA TECH INTER. All rights reserved. International Engineering &amp; Tutorial Consulting.
+        {t("footerCopyright")}
       </div>
     </footer>
   );

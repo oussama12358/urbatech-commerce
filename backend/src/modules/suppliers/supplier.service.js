@@ -1,5 +1,11 @@
 import crypto from "crypto";
 import { getCollection, createId } from "../../db/mongo.js";
+import {
+  notifyAdminAlert,
+  notifyAdminLowStock,
+  notifyCustomerFulfillmentUpdate,
+  notifySupplierNewOrder
+} from "../notifications/notification.service.js";
 import { ensureSupplierSettlementsForOrder } from "../settlements/settlement.service.js";
 import { getSupplierAdapter } from "./supplier-adapters.js";
 
@@ -66,9 +72,10 @@ function aggregateFulfillmentStatus(dispatches, fallback = "processing") {
     .map((dispatch) => String(dispatch.status || "").toLowerCase())
     .filter(Boolean);
   if (!statuses.length) return fallback;
-  if (statuses.every((status) => status.includes("deliver"))) return "Delivered";
+  if (statuses.some((status) => status.includes("out for delivery") || status.includes("out_for_delivery"))) return "Out for delivery";
+  if (statuses.every((status) => status.includes("delivered"))) return "Delivered";
   if (statuses.some((status) => status.includes("cancel"))) return "Cancelled";
-  if (statuses.some((status) => status.includes("ship"))) return "Shipped";
+  if (statuses.some((status) => status.includes("shipped") || status.includes("shipment"))) return "Shipped";
   if (statuses.some((status) => status.includes("prepar"))) return "Preparing";
   if (statuses.some((status) => status.includes("process"))) return "Processing";
   return dispatches[0]?.status || fallback;
@@ -150,6 +157,8 @@ export function publicSupplier(supplier) {
     adapter: supplier.adapter || "universal",
     api_url: supplier.api_url,
     auth_mode: supplier.auth_mode || "bearer",
+    notification_email: supplier.notification_email || "",
+    contact_email: supplier.contact_email || "",
     api_key_header: supplier.api_key_header || "X-API-Key",
     api_secret_header: supplier.api_secret_header || "X-API-Secret",
     custom_headers: supplier.custom_headers || {},
@@ -237,6 +246,12 @@ export async function syncSupplierProducts(id) {
       },
       { upsert: true }
     );
+    notifyAdminLowStock({
+      id: productId,
+      name: item.name,
+      stock: Number(item.stock || 0),
+      supplier_id: id
+    }).catch((err) => console.error("[notification:low-stock]", err.message));
     updated += 1;
   }
 
@@ -260,6 +275,13 @@ export async function syncAllConnectedSuppliers() {
       results.push({ supplier_id: supplier.id, ...(await syncSupplierProducts(supplier.id)) });
     } catch (err) {
       await suppliers.updateOne({ id: supplier.id }, { $set: { api_health: "Offline", last_sync_error: err.message } });
+      notifyAdminAlert({
+        subject: `Supplier API failed: ${supplier.company_name || supplier.id}`,
+        type: "admin_supplier_api_failed",
+        message: err.message,
+        entity: { supplier_id: supplier.id, company_name: supplier.company_name, action: "product_sync" },
+        dedupeKey: `admin_supplier_api_failed:sync:${supplier.id}:${err.message}`
+      }).catch((notifyErr) => console.error("[notification:supplier-api-failed]", notifyErr.message));
       results.push({ supplier_id: supplier.id, error: err.message });
     }
   }
@@ -315,6 +337,7 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
   const dispatches = [];
   const failures = [];
   const existingDispatches = Array.isArray(order.supplier_dispatches) ? order.supplier_dispatches : [];
+  const previousFulfillment = topLevelFulfillment(order, existingDispatches);
   const successfulSupplierIds = new Set(
     existingDispatches.filter((dispatch) => dispatch.supplier_order_id).map((dispatch) => dispatch.supplier_id)
   );
@@ -327,6 +350,13 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
     if (!supplier) {
       const error = new Error("Supplier is not connected or does not support orders");
       const retry = await enqueueSupplierDispatchRetry({ orderId: order.id, supplierId, error });
+      notifyAdminAlert({
+        subject: `Dispatch failed for order ${order.id}`,
+        type: "admin_dispatch_failed",
+        message: error.message,
+        entity: { order_id: order.id, supplier_id: supplierId, attempts: retry.attempts, status: retry.status },
+        dedupeKey: `admin_dispatch_failed:${order.id}:${supplierId}:${retry.attempts}`
+      }).catch((notifyErr) => console.error("[notification:dispatch-failed]", notifyErr.message));
       failures.push({ supplier_id: supplierId, status: retry.status, attempts: retry.attempts, error: error.message });
       continue;
     }
@@ -365,10 +395,23 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
         dispatched_at: new Date(),
         ...response
       });
+      notifySupplierNewOrder(order.id, supplierId, {
+        supplier_id: supplierId,
+        supplier_payable: supplierSubtotal,
+        commission_total: commissionTotal,
+        ...response
+      }).catch((notifyErr) => console.error("[notification:supplier-new-order]", notifyErr.message));
       await markSupplierDispatchRetryDone(order.id, supplierId);
       await suppliers.updateOne({ id: supplierId }, { $inc: { orders_today: 1 } });
     } catch (err) {
       const retry = await enqueueSupplierDispatchRetry({ orderId: order.id, supplierId, error: err });
+      notifyAdminAlert({
+        subject: `Dispatch failed for order ${order.id}`,
+        type: "admin_dispatch_failed",
+        message: err.message,
+        entity: { order_id: order.id, supplier_id: supplierId, attempts: retry.attempts, status: retry.status },
+        dedupeKey: `admin_dispatch_failed:${order.id}:${supplierId}:${retry.attempts}`
+      }).catch((notifyErr) => console.error("[notification:dispatch-failed]", notifyErr.message));
       failures.push({ supplier_id: supplierId, status: retry.status, attempts: retry.attempts, error: err.message });
     }
   }
@@ -398,6 +441,10 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
         }
       }
     );
+    notifyCustomerFulfillmentUpdate(order.id, fulfillment.status, {
+      previousStatus: previousFulfillment.status,
+      trackingChanged: Boolean(fulfillment.tracking && fulfillment.tracking !== previousFulfillment.tracking)
+    }).catch((err) => console.error("[notification:fulfillment]", err.message));
     if (combinedDispatches.length) {
       await ensureSupplierSettlementsForOrder(orderId);
     }
@@ -441,6 +488,7 @@ export async function applySupplierOrderUpdate({ supplierOrderId, supplier_order
     $or: [{ supplier_order_id: lookupOrderId }, { "supplier_dispatches.supplier_order_id": lookupOrderId }]
   });
   if (!order) return null;
+  const previousFulfillment = topLevelFulfillment(order, order.supplier_dispatches || []);
 
   let matchedDispatch = false;
   let dispatches = (order.supplier_dispatches || []).map((dispatch) => {
@@ -471,6 +519,7 @@ export async function applySupplierOrderUpdate({ supplierOrderId, supplier_order
     ];
   }
   const fulfillment = topLevelFulfillment(order, dispatches);
+  const trackingChanged = Boolean(fulfillment.tracking && fulfillment.tracking !== previousFulfillment.tracking);
 
   await orders.updateOne(
     { id: order.id },
@@ -482,6 +531,10 @@ export async function applySupplierOrderUpdate({ supplierOrderId, supplier_order
       }
     }
   );
+  notifyCustomerFulfillmentUpdate(order.id, fulfillment.status, {
+    previousStatus: previousFulfillment.status,
+    trackingChanged
+  }).catch((err) => console.error("[notification:fulfillment]", err.message));
   return { order_id: order.id, dispatches };
 }
 
@@ -506,6 +559,19 @@ export async function syncSupplierOrderStatuses({ limit = 100 } = {}) {
         const applied = await applySupplierOrderUpdate({ supplierOrderId: dispatch.supplier_order_id, ...update });
         results.push({ order_id: order.id, supplier_id: dispatch.supplier_id, supplier_order_id: dispatch.supplier_order_id, ...update, applied: Boolean(applied) });
       } catch (err) {
+        notifyAdminAlert({
+          subject: `Supplier API failed: ${supplier.company_name || supplier.id}`,
+          type: "admin_supplier_api_failed",
+          message: err.message,
+          entity: {
+            supplier_id: supplier.id,
+            company_name: supplier.company_name,
+            order_id: order.id,
+            supplier_order_id: dispatch.supplier_order_id,
+            action: "status_sync"
+          },
+          dedupeKey: `admin_supplier_api_failed:status:${supplier.id}:${dispatch.supplier_order_id}:${err.message}`
+        }).catch((notifyErr) => console.error("[notification:supplier-api-failed]", notifyErr.message));
         results.push({ order_id: order.id, supplier_id: dispatch.supplier_id, supplier_order_id: dispatch.supplier_order_id, error: err.message });
       }
     }

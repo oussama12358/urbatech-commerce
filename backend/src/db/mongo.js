@@ -67,6 +67,9 @@ async function ensureIndexes() {
   await database.collection("supplier_settlements").createIndex({ status: 1, created_at: -1 });
   await database.collection("refunds").createIndex({ id: 1 }, { unique: true });
   await database.collection("refunds").createIndex({ order_id: 1 });
+  await database.collection("email_notifications").createIndex({ dedupe_key: 1 }, { sparse: true });
+  await database.collection("email_notifications").createIndex({ type: 1, created_at: -1 });
+  await database.collection("email_notifications").createIndex({ status: 1, created_at: -1 });
   await database.collection("app_settings").createIndex({ key: 1 }, { unique: true });
   await database.collection("payment_providers").createIndex({ provider_key: 1 }, { unique: true });
 }

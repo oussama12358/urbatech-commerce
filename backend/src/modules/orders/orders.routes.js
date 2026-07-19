@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { getCollection } from "../../db/mongo.js";
 import { requireAuth } from "../../middleware/auth.js";
+import { notifyCustomerOrderConfirmed } from "../notifications/notification.service.js";
 import { releaseStockForItems, reserveStockForItems } from "./inventory.service.js";
 
 const orderSchema = z.object({
@@ -243,6 +244,7 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
         .find({ order_id: id })
         .project(itemProjection(false))
         .toArray();
+      notifyCustomerOrderConfirmed(id).catch((err) => console.error("[notification:order-confirmed]", err.message));
       res.status(201).json({
         data: serializeOrder(createdOrder, itemsRaw, { includeInternal: false })
       });

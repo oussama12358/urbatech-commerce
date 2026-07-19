@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Hero from "../components/Hero.jsx";
 import SummaryBox from "../components/SummaryBox.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
+import { t, useLocale } from "../../i18n.js";
 import { money } from "../../shared/lib/format.js";
 import { showToast } from "../../shared/lib/toast.js";
 import COUNTRIES, { PHONE_DATA, DIAL_CODES, getCountryByCode } from "../../shared/lib/countries.js";
@@ -57,7 +58,7 @@ function CountryAutocomplete({ value, onChange }) {
         {value && query === value.name && <CountryFlagImage src={value.flagSrc} alt={value.code} />}
         <input
           className="input country-input"
-          placeholder="Country"
+          placeholder={t("country")}
           value={query}
           required
           onChange={(e) => {
@@ -103,7 +104,7 @@ function CountryAutocomplete({ value, onChange }) {
       )}
       {open && filtered.length === 0 && query && (
         <div className="country-dropdown">
-          <div className="country-option no-result">"{query}" not found</div>
+          <div className="country-option no-result">{t("notFound").replace("{query}", query)}</div>
         </div>
       )}
     </div>
@@ -173,7 +174,7 @@ function CitySearch({ countryCode, value, onChange, onCountryChange }) {
         <input
           className="input country-input"
           name="city"
-          placeholder="Search for a city..."
+          placeholder={t("searchCityPlaceholder")}
           value={value || query}
           required
           onChange={(e) => {
@@ -201,7 +202,7 @@ function CitySearch({ countryCode, value, onChange, onCountryChange }) {
       )}
       {open && filtered.length === 0 && query && (
         <div className="country-dropdown">
-          <div className="country-option no-result">"{query}" not found</div>
+          <div className="country-option no-result">{t("notFound").replace("{query}", query)}</div>
         </div>
       )}
     </div>
@@ -251,7 +252,7 @@ function PhoneInput({ phoneCode, phoneFormat, onCodeChange, name }) {
         <span className="phone-trigger-flag">
           {current ? <CountryFlagImage src={current.flagSrc} alt={current.code} /> : null}
         </span>
-        <span className="phone-trigger-dial">{current?.dial || "Country code"}</span>
+        <span className="phone-trigger-dial">{current?.dial || t("countryCodePlaceholder")}</span>
         <span className="phone-trigger-arrow">▼</span>
       </div>
       {open && (
@@ -278,7 +279,7 @@ function PhoneInput({ phoneCode, phoneFormat, onCodeChange, name }) {
         type="tel"
         inputMode="numeric"
         pattern="[0-9]*"
-          placeholder={phoneFormat || "Phone number"}
+          placeholder={t("phoneNumberPlaceholder")}
         value={displayValue}
         required
         onKeyDown={handleKeyDown}
@@ -297,6 +298,7 @@ function PhoneInput({ phoneCode, phoneFormat, onCodeChange, name }) {
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
+  useLocale();
   const { user, cartLines, totals, clearCart, createOrder, createCheckoutSession, paymentProviders } = useStore();
 
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -310,7 +312,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!cartLines.length && !redirectedRef.current) {
       redirectedRef.current = true;
-      showToast("Your cart is empty. Continue shopping.", "error");
+      showToast(t("cartEmptyContinueShopping"), "error");
       navigate("/store", { replace: true });
     }
   }, [cartLines.length, navigate]);
@@ -355,20 +357,20 @@ export default function CheckoutPage() {
   const submit = async (event) => {
     event.preventDefault();
     if (!cartLines.length) {
-      showToast("Your cart is empty. Continue shopping.", "error");
+      showToast(t("cartEmptyContinueShopping"), "error");
       navigate("/store");
       return;
     }
 
     // Validate country - must be selected from list
     if (!selectedCountry) {
-      showToast("Please select a valid country from the list.", "error");
+      showToast(t("selectValidCountry"), "error");
       return;
     }
 
     // Validate city - must be selected from list
     if (!selectedCity || !searchCities(selectedCity, selectedCountry?.code).some(c => c.city === selectedCity && c.code === selectedCountry?.code)) {
-      showToast("Please select a valid city from the list.", "error");
+      showToast(t("selectValidCity"), "error");
       return;
     }
 
@@ -377,7 +379,7 @@ export default function CheckoutPage() {
     const phoneDigits = formValues.phoneNumber ? formValues.phoneNumber.replace(/\D/g, "") : "";
     const expectedDigits = phoneFormat ? phoneFormat.split(" ").reduce((sum, g) => sum + g.replace(/[^X]/g, "").length, 0) : 0;
     if (!phoneDigits || (expectedDigits > 0 && phoneDigits.length < expectedDigits)) {
-      showToast(`Please enter a complete phone number (${expectedDigits} digits required).`, "error");
+      showToast(t("pleaseEnterCompletePhone"), "error");
       return;
     }
 
@@ -402,7 +404,7 @@ export default function CheckoutPage() {
       }
     } catch (err) {
       console.error(err);
-        const fallback = "Selected payment method is unavailable. Please try another or contact support.";
+        const fallback = t("paymentUnavailable");
         showToast(err.message && typeof err.message === "string" ? err.message : fallback, "error");
         navigate("/checkout", { replace: true });
     }
@@ -410,27 +412,27 @@ export default function CheckoutPage() {
 
   return (
     <main className="main">
-      <Hero eyebrow="Checkout" title="Complete your purchase." lead="Enter your billing and delivery information to finalize the order." />
+      <Hero eyebrow={t("checkout")} title={t("completePurchase")} lead={t("checkoutLead")} />
       <section className="two-col">
         <form className="panel form-grid" onSubmit={submit}>
-          <h2>Billing information</h2>
+          <h2>{t("billingInformation")}</h2>
           <div className="form-grid two">
             <label>
-              First name *
-              <input className="input" name="firstName" placeholder="First name" defaultValue={user?.name?.split(" ")[0] || ""} required />
+              {t("firstName")} *
+              <input className="input" name="firstName" placeholder={t("firstName")} defaultValue={user?.name?.split(" ")[0] || ""} required />
             </label>
             <label>
-              Last name *
-              <input className="input" name="lastName" placeholder="Last name" required />
+              {t("lastName")} *
+              <input className="input" name="lastName" placeholder={t("lastName")} required />
             </label>
           </div>
           <div className="form-grid two">
             <label>
-              Email *
+              {t("email")} *
               <input className="input" name="email" type="email" defaultValue={user?.email || ""} placeholder="email@example.com" required />
             </label>
             <label>
-              Phone *
+              {t("phone")} *
               <PhoneInput
                 phoneCode={phoneCode}
                 phoneFormat={phoneFormat}
@@ -441,39 +443,39 @@ export default function CheckoutPage() {
           </div>
           <div className="form-grid two">
             <label>
-              Country *
+              {t("country")} *
               <CountryAutocomplete value={selectedCountry} onChange={setSelectedCountry} />
             </label>
             <label>
-              City *
+              {t("city")} *
               <CitySearch countryCode={selectedCountry?.code} value={selectedCity} onChange={setSelectedCity} onCountryChange={setSelectedCountry} />
             </label>
           </div>
           <div className="form-grid two">
             <label>
-              Postal code *
-              <input className="input" name="postalCode" placeholder="Postal code" required />
+              {t("postalCode")} *
+              <input className="input" name="postalCode" placeholder={t("postalCode")} required />
             </label>
             <label>
-              Address *
-              <input className="input" name="address" placeholder="Street address, building, suite..." required />
+              {t("address")} *
+              <input className="input" name="address" placeholder={t("address")} required />
             </label>
           </div>
           <div className="form-grid two">
             <label>
-              Apartment (optional)
-              <input className="input" name="apartment" placeholder="Apt, suite, floor..." />
+              {t("apartmentOptional")}
+              <input className="input" name="apartment" placeholder={t("apartmentOptional")} />
             </label>
             <div />
           </div>
           <label>
-            Order notes (optional)
-            <textarea className="input" name="notes" rows={4} placeholder="Delivery instructions, gate code, preferred delivery time..." />
+            {t("orderNotesOptional")}
+            <textarea className="input" name="notes" rows={4} placeholder={t("deliveryInstructionsPlaceholder")} />
           </label>
 
           <div className="payment-panel">
             <div>
-              <label htmlFor="paymentMethod">Payment method</label>
+              <label htmlFor="paymentMethod">{t("paymentMethod")}</label>
               {enabledPaymentProviders.length ? (
                 <>
                   <select
@@ -489,7 +491,7 @@ export default function CheckoutPage() {
                       </option>
                     ))}
                   </select>
-                  <p className="payment-hint">You will be redirected to the selected secure payment page.</p>
+                  <p className="payment-hint">{t("redirectToPayment")}</p>
                   <div className="payment-logos">
                     {enabledPaymentProviders.map((provider) => (
                       <span key={provider.provider_key} className="payment-badge">
@@ -500,8 +502,8 @@ export default function CheckoutPage() {
                 </>
               ) : (
                 <div className="payment-warning">
-                  <p>⚠ No payment methods are currently available.</p>
-                  <p>Please contact support or try again later.</p>
+                  <p>⚠ {t("noPaymentMethodsAvailable")}</p>
+                  <p>{t("contactSupportOrTryLater")}</p>
                 </div>
               )}
             </div>
@@ -512,12 +514,12 @@ export default function CheckoutPage() {
                   type="submit"
                   disabled={!enabledPaymentProviders.length}
                 >
-                  Pay {enabledPaymentProviders.length ? money(totals.total) : ""}
+                  {t("pay")} {enabledPaymentProviders.length ? money(totals.total) : ""}
                 </button>
-                <span className="pay-lock-badge">🔒 Total secured</span>
+                <span className="pay-lock-badge">{t("totalSecured")}</span>
               </div>
               <Link className="secondary-btn full-width" to="/cart">
-                ← Back to cart
+                {t("backToCart")}
               </Link>
             </div>
           </div>
@@ -526,11 +528,11 @@ export default function CheckoutPage() {
         <aside className="panel summary-panel">
           <div className="summary-header">
             <div>
-              <h2>Order summary</h2>
-              <p>{cartLines.length} item{cartLines.length === 1 ? "" : "s"}</p>
+              <h2>{t("orderSummary")}</h2>
+              <p>{cartLines.length} {cartLines.length === 1 ? t("item") : t("items")}</p>
             </div>
             <div className="summary-trust">
-              <span>🔒 Secure payment</span>
+              <span>{t("securePayment")}</span>
             </div>
           </div>
           <div className="summary-items">
@@ -543,13 +545,13 @@ export default function CheckoutPage() {
             ))}
           </div>
           <div className="summary-meta">
-            <span>Estimated delivery</span>
-            <strong>3-5 business days</strong>
+            <span>{t("estimatedDelivery")}</span>
+            <strong>{t("businessDays")}</strong>
           </div>
           <SummaryBox totals={totals} />
           {enabledPaymentProviders.length ? (
             <div className="summary-supported">
-              <span className="summary-supported-label">Accepted payment methods</span>
+              <span className="summary-supported-label">{t("acceptedPaymentMethods")}</span>
               <div className="payment-logos summary-payment-logos">
                 {enabledPaymentProviders.map((provider) => (
                   <span key={provider.provider_key} className="payment-badge">
@@ -559,8 +561,8 @@ export default function CheckoutPage() {
               </div>
             </div>
           ) : null}
-          <p className="summary-note">All totals include service fees and estimated shipping. Final payment is processed securely.</p>
-          <p className="summary-help">Questions? Check the support details in the footer below.</p>
+          <p className="summary-note">{t("allTotalsInclude")}</p>
+          <p className="summary-help">{t("summaryHelp")}</p>
         </aside>
       </section>
     </main>

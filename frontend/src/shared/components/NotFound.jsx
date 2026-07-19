@@ -1,7 +1,9 @@
+import { t } from "../../i18n.js";
+
 export default function NotFound() {
   return (
     <main className="main">
-      <div className="empty">Page not found.</div>
+      <div className="empty">{t("pageNotFound")}</div>
     </main>
   );
 }

@@ -4,8 +4,10 @@ import { Plus } from "lucide-react";
 import ProductTable from "../components/ProductTable.jsx";
 import ConfirmDialog from "../../shared/components/ConfirmDialog.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
+import { t, useLocale } from "../../i18n.js";
 
 export default function Products() {
+  useLocale();
   const { products, categories, deleteProduct } = useStore();
   const [pendingDelete, setPendingDelete] = useState(null);
   const [query, setQuery] = useState("");
@@ -13,6 +15,15 @@ export default function Products() {
   const [status, setStatus] = useState("All");
   const [stock, setStock] = useState("All");
   const statuses = useMemo(() => ["All", ...new Set(products.map((product) => product.status).filter(Boolean))], [products]);
+
+  const translateStatus = (status) => {
+    if (status === "All") return t("allStatuses");
+    if (status === "In stock") return t("inStockStatus");
+    if (status === "Low stock") return t("lowStockStatus");
+    if (status === "Out of stock") return t("outOfStockStatus");
+    if (status === "Preorder") return t("preorderStatus");
+    return status;
+  };
 
   const filteredProducts = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -46,37 +57,37 @@ export default function Products() {
     <main className="admin-main">
       <div className="admin-page-head">
         <div>
-          <p className="eyebrow">Catalogue</p>
-          <h2>Products</h2>
+          <p className="eyebrow">{t("catalogue")}</p>
+          <h2>{t("products")}</h2>
         </div>
         <Link className="primary-btn" to="/admin/products/new">
           <Plus />
-          Add product
+          {t("addProduct")}
         </Link>
       </div>
       <section className="panel">
         <div className="admin-section-head">
-          <h2>Catalogue list</h2>
-          <span>{filteredProducts.length} of {products.length} products</span>
+          <h2>{t("catalogueList")}</h2>
+          <span>{filteredProducts.length} {t("of")} {products.length} {t("products")}</span>
         </div>
         <div className="admin-filter-bar">
-          <input className="input" type="search" placeholder="Search name, category, specs..." value={query} onChange={(event) => setQuery(event.target.value)} />
+          <input className="input" type="search" placeholder={t("searchProductsPlaceholder")} value={query} onChange={(event) => setQuery(event.target.value)} />
           <select className="select" value={category} onChange={(event) => setCategory(event.target.value)}>
-            <option value="All">All categories</option>
+            <option value="All">{t("allCategories")}</option>
             {categories.map((item) => (
               <option key={item.id} value={item.name}>{item.name}</option>
             ))}
           </select>
           <select className="select" value={status} onChange={(event) => setStatus(event.target.value)}>
             {statuses.map((item) => (
-              <option key={item} value={item}>{item === "All" ? "All statuses" : item}</option>
+              <option key={item} value={item}>{translateStatus(item)}</option>
             ))}
           </select>
           <select className="select" value={stock} onChange={(event) => setStock(event.target.value)}>
-            <option value="All">All stock</option>
-            <option value="Available">Available</option>
-            <option value="Low">Low stock</option>
-            <option value="Out">Out of stock</option>
+            <option value="All">{t("allStock")}</option>
+            <option value="Available">{t("available")}</option>
+            <option value="Low">{t("lowStock")}</option>
+            <option value="Out">{t("outOfStock")}</option>
           </select>
         </div>
         <ProductTable products={filteredProducts} onDelete={setPendingDelete} />
@@ -84,9 +95,9 @@ export default function Products() {
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         danger
-        title="Delete product"
-        message={pendingDelete ? `Delete "${pendingDelete.name}" from the catalogue?` : ""}
-        confirmLabel="Delete"
+        title={t("deleteProduct")}
+        message={pendingDelete ? `${t("deleteProductConfirm")} "${pendingDelete.name}"?` : ""}
+        confirmLabel={t("delete")}
         onCancel={() => setPendingDelete(null)}
         onConfirm={confirmDelete}
       />

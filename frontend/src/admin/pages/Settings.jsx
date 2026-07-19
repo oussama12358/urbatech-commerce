@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../../store/StoreContext.jsx";
+import { t, useLocale } from "../../i18n.js";
 
 function StatusBadge({ active, label }) {
   return (
@@ -14,12 +15,13 @@ function StatusBadge({ active, label }) {
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       )}
-      {active ? label : "Not " + label}
+      {active ? label : t("notConfigured")}
     </span>
   );
 }
 
 export default function Settings() {
+  useLocale();
   const { settings, updateSettings } = useStore();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -32,7 +34,7 @@ export default function Settings() {
     try {
       await updateSettings({ storefrontEnabled });
     } catch (err) {
-      setError(err.message || "Unable to update settings");
+      setError(err.message || t("unableToUpdateSettings"));
     } finally {
       setSaving(false);
     }
@@ -42,26 +44,26 @@ export default function Settings() {
     <main className="admin-main">
       <div className="admin-page-head">
         <div>
-          <p className="eyebrow">Configuration</p>
-          <h2>Settings</h2>
+          <p className="eyebrow">{t("configuration")}</p>
+          <h2>{t("settings")}</h2>
         </div>
       </div>
 
       {error && <div className="error-message" style={{ marginBottom: 14 }}>{error}</div>}
 
       <section className="panel" style={{ marginBottom: 16 }}>
-        <h2>Storefront</h2>
+        <h2>{t("storefront")}</h2>
         <div className="kv">
           <div className="kv-row">
-            <span>Status</span>
-            <div className="segmented-control" role="radiogroup" aria-label="Storefront status">
+            <span>{t("status")}</span>
+            <div className="segmented-control" role="radiogroup" aria-label={t("storefrontStatus")}>
               <button
                 className={settings.storefrontEnabled ? "active" : ""}
                 type="button"
                 disabled={saving}
                 onClick={() => changeStorefront(true)}
               >
-                Enabled
+                {t("enabled")}
               </button>
               <button
                 className={!settings.storefrontEnabled ? "active" : ""}
@@ -69,7 +71,7 @@ export default function Settings() {
                 disabled={saving}
                 onClick={() => changeStorefront(false)}
               >
-                Disabled
+                {t("disabled")}
               </button>
             </div>
           </div>
@@ -77,20 +79,20 @@ export default function Settings() {
       </section>
 
       <section className="panel">
-        <h2>Payments</h2>
+        <h2>{t("payments")}</h2>
         <div className="kv">
           <div className="kv-row">
-            <span>Stripe</span>
+            <span>{t("stripe")}</span>
             <div className="badge-row">
-              <StatusBadge active={payments.stripe?.configured} label="Configured" />
-              <StatusBadge active={payments.stripe?.enabled} label="Enabled" />
+              <StatusBadge active={payments.stripe?.configured} label={t("configured")} />
+              <StatusBadge active={payments.stripe?.enabled} label={t("enabled")} />
             </div>
           </div>
           <div className="kv-row">
-            <span>PayPal</span>
+            <span>{t("paypal")}</span>
             <div className="badge-row">
-              <StatusBadge active={payments.paypal?.configured} label="Configured" />
-              <StatusBadge active={payments.paypal?.enabled} label="Enabled" />
+              <StatusBadge active={payments.paypal?.configured} label={t("configured")} />
+              <StatusBadge active={payments.paypal?.enabled} label={t("enabled")} />
             </div>
           </div>
         </div>

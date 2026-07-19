@@ -1,23 +1,26 @@
 import { Link } from "react-router-dom";
 import { Pencil, Trash2 } from "lucide-react";
 import { money } from "../../shared/lib/format.js";
+import { t, useLocale } from "../../i18n.js";
 
 export default function ProductTable({ products, onDelete }) {
+  useLocale();
+
   if (!products.length) {
-    return <div className="empty">No products yet.</div>;
+    return <div className="empty">{t("noProductsYet")}</div>;
   }
 
   return (
     <table className="table">
       <thead>
         <tr>
-          <th>Product</th>
-          <th>Supplier ID</th>
-          <th>Category</th>
-          <th>Price</th>
-          <th>Cost</th>
-          <th>Stock</th>
-          <th>Margin</th>
+          <th>{t("product")}</th>
+          <th>{t("supplierId")}</th>
+          <th>{t("categories")}</th>
+          <th>{t("price")}</th>
+          <th>{t("cost")}</th>
+          <th>{t("stock")}</th>
+          <th>{t("margin")}</th>
           <th></th>
         </tr>
       </thead>

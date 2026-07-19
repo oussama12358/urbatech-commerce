@@ -6,6 +6,7 @@ import GoogleLogo from "../assets/google.svg";
 import AppleLogo from "../assets/apple.svg";
 import EyeIcon from "../assets/eye.svg";
 import EyeOffIcon from "../assets/eye-off.svg";
+import { useLocale, t } from "../../i18n.js";
 
 const isAdmin = (user) => user?.role?.toLowerCase() === "admin";
 const isAdminPath = (path) => path?.startsWith("/admin");
@@ -20,6 +21,7 @@ export default function LoginPage() {
   const { login, settings } = useStore();
   const navigate = useNavigate();
   const location = useLocation();
+  useLocale();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
@@ -67,12 +69,12 @@ export default function LoginPage() {
       // Handle email verification required error
       if (err.message?.includes("Email not verified")) {
         if (!settings?.disableEmailVerification) {
-          setError("Email not verified. Please check your inbox for the verification link to confirm your email address.");
+          setError(t("emailNotVerified"));
         } else {
-          setError(err.message || "Login failed");
+          setError(err.message || t("loginFailed"));
         }
       } else {
-        setError(err.message || "Login failed");
+        setError(err.message || t("loginFailed"));
       }
     } finally {
       setLoading(false);
@@ -90,13 +92,13 @@ export default function LoginPage() {
       <section className="auth-card">
         <div className="auth-header">
           <Link className="brand" to="/store"><span className="brand-mark">U</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
-          <p>Access your cart, checkout, orders and account information.</p>
+          <p>{t("accessAccountText")}</p>
         </div>
         {error && <div className="error-message" style={{ color: "#ffb3b3", marginBottom: "12px", fontSize: "14px" }}>{error}</div>}
         <form className="form-grid" onSubmit={submit}>
-          <input className="input" name="email" type="email" placeholder="Email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); handleInputChange(); }} required />
+          <input className="input" name="email" type="email" placeholder={t("emailPlaceholder")} autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); handleInputChange(); }} required />
           <div className="password-wrapper">
-            <input className="input" name="password" type={showPassword ? "text" : "password"} placeholder="Password" autoComplete="current-password" value={password} onChange={(e) => { setPassword(e.target.value); handleInputChange(); }} required />
+            <input className="input" name="password" type={showPassword ? "text" : "password"} placeholder={t("passwordPlaceholder")} autoComplete="current-password" value={password} onChange={(e) => { setPassword(e.target.value); handleInputChange(); }} required />
             {password && (
               <button
                 type="button"
@@ -109,7 +111,7 @@ export default function LoginPage() {
             )}
           </div>
 
-          <button className="primary-btn full-width" type="submit" disabled={loading}>{loading ? "Logging in..." : "Login"}</button>
+          <button className="primary-btn full-width" type="submit" disabled={loading}>{loading ? t("loggingIn") : t("login")}</button>
 
           <button
             className="google-btn"
@@ -120,7 +122,7 @@ export default function LoginPage() {
             }}
           >
             <img src={GoogleLogo} alt="" className="btn-icon" aria-hidden />
-            Continue with Google
+            {t("continueWithGoogle")}
           </button>
 
           <button
@@ -132,21 +134,21 @@ export default function LoginPage() {
             }}
           >
             <img src={AppleLogo} alt="" className="btn-icon" aria-hidden />
-            Continue with Apple
+            {t("continueWithApple")}
           </button>
 
           <div className="remember-row">
             <label>
-              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} /> Remember me
+              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} /> {t("rememberMe")}
             </label>
-            <Link className="link-button" to="/forgot-password">Forgot password?</Link>
+            <Link className="link-button" to="/forgot-password">{t("forgotPassword")}</Link>
           </div>
 
         </form>
         <p className="auth-note">
-          Don't have an account? <Link to="/signup" state={{ next: location.state?.next }}>Create one</Link>
+          {t("dontHaveAccount")} <Link to="/signup" state={{ next: location.state?.next }}>{t("createOne")}</Link>
         </p>
-        <Link className="secondary-btn auth-back-link" to="/store">← Back to store</Link>
+        <Link className="secondary-btn auth-back-link" to="/store">{t("backToStore")}</Link>
       </section>
     </main>
   );

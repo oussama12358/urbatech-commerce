@@ -1,22 +1,25 @@
 import { money } from "../../shared/lib/format.js";
+import { t, useLocale } from "../../i18n.js";
 
 export default function SummaryBox({ totals }) {
+  useLocale();
+
   return (
     <div className="summary">
       <div className="summary-row">
-        <span>Subtotal</span>
+        <span>{t("subtotal")}</span>
         <strong>{money(totals.subtotal)}</strong>
       </div>
       <div className="summary-row">
-        <span>Service fee</span>
+        <span>{t("serviceFee")}</span>
         <strong>{money(totals.service)}</strong>
       </div>
       <div className="summary-row">
-        <span>Estimated shipping</span>
+        <span>{t("estimatedShipping")}</span>
         <strong>{money(totals.shipping)}</strong>
       </div>
       <div className="summary-row total">
-        <span>Total</span>
+        <span>{t("total")}</span>
         <strong>{money(totals.total)}</strong>
       </div>
     </div>

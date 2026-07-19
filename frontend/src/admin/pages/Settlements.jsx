@@ -3,8 +3,10 @@ import { BadgeDollarSign } from "lucide-react";
 import { createApiClient } from "../../shared/lib/api.js";
 import { money } from "../../shared/lib/format.js";
 import { useStore } from "../../store/StoreContext.jsx";
+import { t, useLocale } from "../../i18n.js";
 
 export default function Settlements() {
+  useLocale();
   const { user } = useStore();
   const [settlements, setSettlements] = useState([]);
   const [error, setError] = useState("");
@@ -21,8 +23,19 @@ export default function Settlements() {
     load().catch((err) => setError(err.message || "Unable to load settlements"));
   }, [user?.token]);
 
+  const translateStatus = (status) => {
+    if (!status) return "-";
+    if (status === "paid") return t("paid");
+    if (status === "pending") return t("paymentPending");
+    if (status === "denied") return t("paymentDenied");
+    if (status === "refunded") return t("refunded");
+    if (status === "partially_refunded") return t("partiallyRefunded");
+    if (status === "expired") return t("expired");
+    return status;
+  };
+
   const markPaid = async (settlement) => {
-    const reference = window.prompt("Payout reference", settlement.payout_reference || "");
+    const reference = window.prompt(t("payoutReferencePrompt"), settlement.payout_reference || "");
     if (reference === null) return;
     setBusyId(settlement.id);
     setError("");
@@ -34,7 +47,7 @@ export default function Settlements() {
       });
       await load();
     } catch (err) {
-      setError(err.message || "Unable to mark settlement paid");
+      setError(err.message || t("unableToMarkSettlementPaid"));
     } finally {
       setBusyId("");
     }
@@ -44,27 +57,27 @@ export default function Settlements() {
     <main className="admin-main">
       <div className="admin-page-head">
         <div>
-          <p className="eyebrow">Supplier payouts</p>
-          <h2>Settlements</h2>
+          <p className="eyebrow">{t("supplierPayouts")}</p>
+          <h2>{t("settlements")}</h2>
         </div>
       </div>
       {error && <div className="error-message">{error}</div>}
       <section className="panel">
         {settlements.length ? (
           <table className="table">
-            <thead><tr><th>Order</th><th>Supplier</th><th>Status</th><th>Amount</th><th>Commission</th><th>Reference</th><th></th></tr></thead>
+            <thead><tr><th>{t("order")}</th><th>{t("supplier")}</th><th>{t("status")}</th><th>{t("amount")}</th><th>{t("commission")}</th><th>{t("reference")}</th><th></th></tr></thead>
             <tbody>
               {settlements.map((settlement) => (
                 <tr key={settlement.id}>
                   <td>{settlement.order_id}</td>
                   <td>{settlement.supplier_id}</td>
-                  <td>{settlement.status}</td>
+                  <td>{translateStatus(settlement.status)}</td>
                   <td>{money(settlement.amount || 0)}</td>
                   <td>{money(settlement.commission_total || 0)}</td>
                   <td>{settlement.payout_reference || "-"}</td>
                   <td>
                     {settlement.status !== "paid" && (
-                      <button className="icon-btn" type="button" onClick={() => markPaid(settlement)} disabled={busyId === settlement.id} title="Mark paid">
+                      <button className="icon-btn" type="button" onClick={() => markPaid(settlement)} disabled={busyId === settlement.id} title={t("markPaid") }>
                         <BadgeDollarSign />
                       </button>
                     )}
@@ -74,7 +87,7 @@ export default function Settlements() {
             </tbody>
           </table>
         ) : (
-          <div className="empty">No supplier settlements yet.</div>
+          <div className="empty">{t("noSupplierSettlementsYet")}</div>
         )}
       </section>
     </main>

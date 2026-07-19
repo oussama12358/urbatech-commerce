@@ -1,5 +1,6 @@
 import { env } from "../../config/env.js";
 import { createId, getCollection } from "../../db/mongo.js";
+import { notifySupplierSettlementPaid } from "../notifications/notification.service.js";
 import { getPaymentProviderByKey, getStripeClient } from "../payments/payment.service.js";
 
 function roundMoney(value) {
@@ -183,7 +184,11 @@ export async function markSupplierSettlementPaid(id, payload = {}) {
     updated_at: new Date()
   };
   await settlements.updateOne({ id }, { $set: update });
-  return settlements.findOne({ id }, { projection: { _id: 0 } });
+  const updated = await settlements.findOne({ id }, { projection: { _id: 0 } });
+  if (updated && (updated.status === "paid" || updated.status === "processing")) {
+    notifySupplierSettlementPaid(updated).catch((err) => console.error("[notification:settlement-paid]", err.message));
+  }
+  return updated;
 }
 
 export async function summarizeSupplierSettlements() {

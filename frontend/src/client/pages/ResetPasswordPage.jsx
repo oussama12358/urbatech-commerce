@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { createApiClient } from "../../shared/lib/api.js";
+import { t, useLocale } from "../../i18n.js";
 
 export default function ResetPasswordPage() {
+  useLocale();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [password, setPassword] = useState("");
@@ -17,7 +19,7 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     if (!token) {
       setStatus("error");
-      setMessage("Reset token is missing or invalid.");
+      setMessage(t("verificationTokenMissing"));
     }
   }, [token]);
 
@@ -31,11 +33,11 @@ export default function ResetPasswordPage() {
 
   const validatePassword = () => {
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError(t("passwordsMismatch"));
       return false;
     }
     if (Object.values(passwordRules).includes(false)) {
-      setError("Password must be at least 8 characters and include uppercase, lowercase, a number, and a symbol.");
+      setError(t("passwordRequirements"));
       return false;
     }
     return true;
@@ -57,13 +59,13 @@ export default function ResetPasswordPage() {
         body: JSON.stringify({ token, password })
       });
       setStatus("success");
-      setMessage(json.message || "Password reset successful. You can now log in.");
+      setMessage(json.message || t("passwordResetSuccess"));
       setPassword("");
       setConfirmPassword("");
       setTimeout(() => navigate("/reset-success", { replace: true }), 2000);
     } catch (err) {
       setStatus("error");
-      setError(err.message || "Unable to reset password.");
+      setError(err.message || t("unableResetPassword"));
     } finally {
       setLoading(false);
     }
@@ -78,8 +80,8 @@ export default function ResetPasswordPage() {
             <span className="brand-text">URBA TECH <span>INTER</span></span>
           </Link>
           <div>
-            <h1>Reset password</h1>
-            <p>Set a new password for your account.</p>
+            <h1>{t("resetPasswordTitle")}</h1>
+            <p>{t("resetPasswordLead")}</p>
           </div>
         </div>
 
@@ -92,7 +94,7 @@ export default function ResetPasswordPage() {
         {status === "success" ? (
           <div className="success-message" style={{ color: "#4CAF50", marginBottom: "20px" }}>
             <h3>✓ {message}</h3>
-            <p>You will be redirected to login shortly.</p>
+            <p>{t("redirectToLoginSoon")}</p>
           </div>
         ) : (
           <form className="form-grid" onSubmit={submit}>
@@ -100,7 +102,7 @@ export default function ResetPasswordPage() {
               className="input"
               name="password"
               type="password"
-              placeholder="New password"
+              placeholder={t("newPasswordPlaceholder")}
               autoComplete="new-password"
               value={password}
               onChange={(e) => {
@@ -114,7 +116,7 @@ export default function ResetPasswordPage() {
               className="input"
               name="confirmPassword"
               type="password"
-              placeholder="Confirm new password"
+              placeholder={t("confirmNewPasswordPlaceholder")}
               autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => {
@@ -123,17 +125,17 @@ export default function ResetPasswordPage() {
               }}
               required
             />
-            <div className="password-status">Password strength: <strong>{Object.values(passwordRules).filter(Boolean).length}/5</strong></div>
-            <ul className="password-hint compact" aria-label="Password requirements">
-              <li className={passwordRules.length ? "valid" : ""}>At least 8 characters</li>
-              <li className={passwordRules.upper ? "valid" : ""}>Uppercase letter</li>
-              <li className={passwordRules.lower ? "valid" : ""}>Lowercase letter</li>
-              <li className={passwordRules.digit ? "valid" : ""}>Number</li>
-              <li className={passwordRules.symbol ? "valid" : ""}>Symbol or punctuation</li>
+            <div className="password-status">{t("passwordStrength")}: <strong>{Object.values(passwordRules).filter(Boolean).length}/5</strong></div>
+            <ul className="password-hint compact" aria-label={t("passwordRequirements")}>
+              <li className={passwordRules.length ? "valid" : ""}>{t("passwordHintLength")}</li>
+              <li className={passwordRules.upper ? "valid" : ""}>{t("passwordHintUpper")}</li>
+              <li className={passwordRules.lower ? "valid" : ""}>{t("passwordHintLower")}</li>
+              <li className={passwordRules.digit ? "valid" : ""}>{t("passwordHintDigit")}</li>
+              <li className={passwordRules.symbol ? "valid" : ""}>{t("passwordHintSymbol")}</li>
             </ul>
             {error && <div className="error-message" style={{ color: "#ffb3b3" }}>{error}</div>}
-            <button className="primary-btn" type="submit" disabled={loading || !token}>{loading ? "Resetting..." : "Reset password"}</button>
-            <Link className="secondary-btn" to="/login">← Back to login</Link>
+            <button className="primary-btn" type="submit" disabled={loading || !token}>{loading ? t("resetting") : t("resetPasswordButton")}</button>
+            <Link className="secondary-btn" to="/login">{t("backToLogin")}</Link>
           </form>
         )}
       </section>

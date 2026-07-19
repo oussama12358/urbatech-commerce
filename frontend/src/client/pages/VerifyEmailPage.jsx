@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useStore } from "../../store/StoreContext.jsx";
 import { createApiClient } from "../../shared/lib/api.js";
+import { t, useLocale } from "../../i18n.js";
 
 export default function VerifyEmailPage() {
+  useLocale();
   const [searchParams] = useSearchParams();
   const { login } = useStore();
   const navigate = useNavigate();
@@ -15,7 +17,7 @@ export default function VerifyEmailPage() {
       const token = searchParams.get("token");
       if (!token) {
         setStatus("error");
-        setMessage("Verification token is missing.");
+        setMessage(t("verificationTokenMissing"));
         return;
       }
 
@@ -26,7 +28,7 @@ export default function VerifyEmailPage() {
         });
 
         setStatus("success");
-        setMessage(response.message || "Email verified successfully!");
+        setMessage(response.message || t("emailVerifiedSuccessfully"));
 
         // Auto-login the user
         if (response.user && response.token) {
@@ -38,7 +40,7 @@ export default function VerifyEmailPage() {
         }
       } catch (err) {
         setStatus("error");
-        setMessage(err.message || "Failed to verify email. The link may have expired.");
+        setMessage(err.message || t("failedEmailVerification"));
       }
     };
 
@@ -55,34 +57,34 @@ export default function VerifyEmailPage() {
               URBA TECH <span>INTER</span>
             </span>
           </Link>
-          <p>Email Verification</p>
+          <p>{t("emailVerificationTitle")}</p>
         </div>
 
         {status === "verifying" && (
           <div className="loading">
-            <p>Verifying your email...</p>
+            <p>{t("verifyingEmail")}</p>
           </div>
         )}
 
         {status === "success" && (
           <div className="success-message" style={{ color: "#4CAF50", marginBottom: "20px" }}>
             <h3>✓ {message}</h3>
-            <p>You will be redirected to the store shortly.</p>
+            <p>{t("redirectToStoreSoon")}</p>
           </div>
         )}
 
         {status === "error" && (
           <div className="error-message" style={{ color: "#ffb3b3", marginBottom: "20px" }}>
-            <h3>✗ Verification Failed</h3>
+            <h3>✗ {t("verificationFailedTitle")}</h3>
             <p>{message}</p>
             <div style={{ marginTop: "20px" }}>
-              <p>You can try:</p>
+              <p>{t("verificationTryAgain")}</p>
               <ul style={{ textAlign: "left", marginLeft: "20px" }}>
                 <li>
-                  <Link to="/login">Go to Login</Link> and request a new verification email
+                  <Link to="/login">{t("goToLogin")}</Link> {t("andRequestNewVerificationEmail")}
                 </li>
                 <li>
-                  <Link to="/signup">Sign up again</Link> with a valid email
+                  <Link to="/signup">{t("signUpAgain")}</Link> {t("withAValidEmail")}
                 </li>
               </ul>
             </div>
@@ -90,7 +92,7 @@ export default function VerifyEmailPage() {
         )}
 
         <Link className="secondary-btn" to="/store" style={{ marginTop: "20px" }}>
-          ← Back to store
+          {t("backToStore")}
         </Link>
       </section>
     </main>

@@ -22,6 +22,8 @@ const supplierSchema = z.object({
   auth_mode: z.enum(["bearer", "api-key", "basic", "both", "oauth", "none"]).default("bearer"),
   api_key: z.string().optional().default(""),
   api_secret: z.string().optional().default(""),
+  notification_email: z.string().optional().default(""),
+  contact_email: z.string().optional().default(""),
   api_key_header: z.string().optional().default("X-API-Key"),
   api_secret_header: z.string().optional().default("X-API-Secret"),
   custom_headers: z.record(z.any()).optional().default({}),

@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import ConfirmDialog from "../../shared/components/ConfirmDialog.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
+import { t, useLocale } from "../../i18n.js";
 
 export default function Categories() {
+  useLocale();
   const { categories, addCategory, deleteCategory } = useStore();
   const [error, setError] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -49,34 +51,34 @@ export default function Categories() {
     <main className="admin-main">
       <div className="admin-page-head">
         <div>
-          <p className="eyebrow">Catalogue</p>
-          <h2>Categories</h2>
+          <p className="eyebrow">{t("catalogue")}</p>
+          <h2>{t("categories")}</h2>
         </div>
       </div>
       <form className="panel form-grid" onSubmit={submit} style={{ marginBottom: 18 }}>
-        <h2>Add category</h2>
+        <h2>{t("addCategory")}</h2>
         {error && <div className="error-message">{error}</div>}
         <div className="form-grid two">
-          <input className="input" name="name" placeholder="Category name" required />
-          <button className="primary-btn" type="submit">Add category</button>
+          <input className="input" name="name" placeholder={t("categoryNamePlaceholder")} required />
+          <button className="primary-btn" type="submit">{t("addCategory")}</button>
         </div>
       </form>
       <section className="panel">
         <div className="admin-section-head">
-          <h2>Category list</h2>
-          <span>{filteredCategories.length} of {categories.length} categories</span>
+          <h2>{t("categoryList")}</h2>
+          <span>{filteredCategories.length} {t("of")} {categories.length} {t("categories")}</span>
         </div>
         <div className="admin-filter-bar">
-          <input className="input" type="search" placeholder="Search categories..." value={query} onChange={(event) => setQuery(event.target.value)} />
+          <input className="input" type="search" placeholder={t("searchCategoriesPlaceholder")} value={query} onChange={(event) => setQuery(event.target.value)} />
           <select className="select" value={usage} onChange={(event) => setUsage(event.target.value)}>
-            <option value="All">All usage</option>
-            <option value="Used">In use</option>
-            <option value="Empty">Empty</option>
+            <option value="All">{t("allUsage")}</option>
+            <option value="Used">{t("inUse")}</option>
+            <option value="Empty">{t("emptyUsage")}</option>
           </select>
         </div>
         {filteredCategories.length ? (
           <table className="table">
-            <thead><tr><th>Category</th><th>Products</th><th>Actions</th></tr></thead>
+            <thead><tr><th>{t("category")}</th><th>{t("products")}</th><th>{t("actions")}</th></tr></thead>
             <tbody>
               {filteredCategories.map((category) => (
                 <tr key={category.id}>
@@ -84,26 +86,26 @@ export default function Categories() {
                   <td>{category.product_count}</td>
                   <td>
                     <div className="row-actions">
-                      <button className="danger-btn compact-btn" type="button" onClick={() => setPendingDelete(category)}>Delete</button>
+                      <button className="danger-btn compact-btn" type="button" onClick={() => setPendingDelete(category)}>{t("delete")}</button>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        ) : <div className="empty">No categories match these filters.</div>}
+        ) : <div className="empty">{t("noCategoriesMatchFilters")}</div>}
       </section>
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         danger
-        title="Delete category"
+        title={t("deleteCategoryTitle")}
         message={
           pendingDelete
-            ? `Delete "${pendingDelete.name}"? This will permanently remove this category and ${pendingDelete.product_count} product${pendingDelete.product_count === 1 ? "" : "s"} inside it. This action is irreversible.`
+            ? `${t("deleteCategoryConfirm")} ${pendingDelete.name}? ${t("deleteCategoryWarning")} ${pendingDelete.product_count} ${t("products")}.`
             : ""
         }
-        confirmLabel="Yes, delete"
-        cancelLabel="No"
+        confirmLabel={t("delete")}
+        cancelLabel={t("cancel")}
         onCancel={() => setPendingDelete(null)}
         onConfirm={confirmDelete}
       />

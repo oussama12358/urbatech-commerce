@@ -5,6 +5,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import { getCollection } from "../../db/mongo.js";
 import { dispatchSupplierOrder } from "../suppliers/supplier.service.js";
 import { getOrderById } from "../orders/orders.routes.js";
+import { notifyCustomerPaymentReceived } from "../notifications/notification.service.js";
 import {
   getPaymentProviderByKey,
   getStripeClient,
@@ -238,6 +239,7 @@ checkoutRouter.post("/webhook", async (req, res, next) => {
             }
           );
 
+          notifyCustomerPaymentReceived(orderId).catch((err) => console.error("[notification:payment-received]", err.message));
           await dispatchSupplierOrder(orderId).catch(async (err) => {
             await orders.updateOne({ id: orderId }, { $set: { supplier_dispatch_error: err.message } });
           });
@@ -305,6 +307,7 @@ checkoutRouter.get("/paypal/return", async (req, res, next) => {
       }
     );
 
+    notifyCustomerPaymentReceived(orderId).catch((err) => console.error("[notification:payment-received]", err.message));
     await dispatchSupplierOrder(orderId).catch(async (err) => {
       await orders.updateOne({ id: orderId }, { $set: { supplier_dispatch_error: err.message } });
     });
@@ -375,6 +378,7 @@ checkoutRouter.post("/paypal/webhook", async (req, res, next) => {
             // already processed
           } else if (eventType === "PAYMENT.CAPTURE.COMPLETED") {
             await orders.updateOne({ id: order.id }, { $set: { status: "Paid", payment_status: "paid", paypal_capture_id: getPayPalCaptureId(event), paid_at: new Date() } });
+            notifyCustomerPaymentReceived(order.id).catch((err) => console.error("[notification:payment-received]", err.message));
             await dispatchSupplierOrder(order.id).catch(async (err) => {
               await orders.updateOne({ id: order.id }, { $set: { supplier_dispatch_error: err.message } });
             });

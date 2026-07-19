@@ -1,8 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useStore } from "../../store/StoreContext.jsx";
+import { t, useLocale } from "../../i18n.js";
 
 export default function AddProduct() {
+  useLocale();
   const { addProduct, categories, suppliers } = useStore();
   const navigate = useNavigate();
   const [error, setError] = useState("");
@@ -39,21 +41,21 @@ export default function AddProduct() {
     <main className="admin-main">
       <div className="admin-page-head">
         <div>
-          <p className="eyebrow">Catalogue</p>
-          <h2>Add product</h2>
+          <p className="eyebrow">{t("catalogue")}</p>
+          <h2>{t("addProduct")}</h2>
         </div>
       </div>
       <form className="panel form-grid" onSubmit={submit}>
         {error && <div className="error-message">{error}</div>}
-        <input className="input" name="name" placeholder="Product name" required />
+        <input className="input" name="name" placeholder={t("productNamePlaceholder")} required />
         <div className="form-grid two">
           <select className="select" name="supplier_id" defaultValue="">
-            <option value="">No supplier</option>
+            <option value="">{t("noSupplier")}</option>
             {suppliers.map((supplier) => (
               <option key={supplier.id} value={supplier.id}>{supplier.company_name}</option>
             ))}
           </select>
-          <input className="input" name="supplier_product_id" placeholder="Supplier Product ID" />
+          <input className="input" name="supplier_product_id" placeholder={t("supplierProductIdPlaceholder") || t("supplierProductIdPlaceholder")} />
         </div>
         <div className="form-grid two">
           <select className="select" name="category" defaultValue={categories[0]?.name || ""}>
@@ -61,34 +63,42 @@ export default function AddProduct() {
               <option key={category.id} value={category.name}>{category.name}</option>
             ))}
           </select>
-          <input className="input" name="newCategory" placeholder="Or new category" />
+          <input className="input" name="newCategory" placeholder={t("orNewCategoryPlaceholder")} />
         </div>
         <div className="form-grid two">
-          <input className="input" name="price" type="number" min="0" step="0.01" placeholder="Price" required />
-          <input className="input" name="cost_price" type="number" min="0" step="0.01" placeholder="Cost price" />
+          <input className="input" name="price" type="number" min="0" step="0.01" placeholder={t("price")} required />
+          <input className="input" name="cost_price" type="number" min="0" step="0.01" placeholder={t("costPricePlaceholder")} />
         </div>
         <div className="form-grid two">
-          <input className="input" name="stock" type="number" min="0" placeholder="Stock" required />
-          <input className="input" name="margin" type="number" min="0" step="0.01" placeholder="Margin %" required />
+          <input className="input" name="stock" type="number" min="0" placeholder={t("stock") } required />
+          <input className="input" name="margin" type="number" min="0" step="0.01" placeholder={t("marginPlaceholder")} required />
         </div>
         <label className="inline-check">
-          <input type="checkbox" name="auto_sync" /> Auto Sync
+          <input type="checkbox" name="auto_sync" /> {t("autoSync")}
         </label>
         <div className="form-grid two">
           <select className="select" name="status" defaultValue="In stock">
-            <option>In stock</option>
-            <option>Low stock</option>
-            <option>Out of stock</option>
-            <option>Preorder</option>
+            <option value="In stock">
+              {t("inStockStatus")}
+            </option>
+            <option value="Low stock">
+              {t("lowStockStatus")}
+            </option>
+            <option value="Out of stock">
+              {t("outOfStockStatus")}
+            </option>
+            <option value={t("preorderStatus")}>
+              {t("preorderStatus")}
+            </option>
           </select>
         </div>
         <div className="form-grid two">
-          <input className="input" name="lead" placeholder="Lead time" />
-          <input className="input" name="warranty" placeholder="Warranty" />
+          <input className="input" name="lead" placeholder={t("leadTime")} />
+          <input className="input" name="warranty" placeholder={t("warranty")} />
         </div>
-        <input className="input" name="specs" placeholder="Specs separated by commas" />
-        <textarea name="desc" placeholder="Short description" />
-        <button className="primary-btn" type="submit">Add product</button>
+        <input className="input" name="specs" placeholder={t("specsPlaceholder")} />
+        <textarea name="desc" placeholder={t("shortDescriptionPlaceholder")} />
+        <button className="primary-btn" type="submit">{t("addProduct")}</button>
       </form>
     </main>
   );

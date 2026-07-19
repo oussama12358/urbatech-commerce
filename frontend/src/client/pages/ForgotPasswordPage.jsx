@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { createApiClient } from "../../shared/lib/api.js";
+import { t, useLocale } from "../../i18n.js";
 
 export default function ForgotPasswordPage() {
+  useLocale();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -20,10 +22,10 @@ export default function ForgotPasswordPage() {
         method: "POST",
         body: JSON.stringify({ email })
       });
-      setMessage(json.message || "If an account exists and supports password login, we'll send you a password reset email.");
+      setMessage(json.message || t("resetEmailFallback"));
       setEmail("");
     } catch (err) {
-      setError(err.message || "Unable to send reset link.");
+      setError(err.message || t("resetLinkError"));
     } finally {
       setLoading(false);
     }
@@ -35,8 +37,8 @@ export default function ForgotPasswordPage() {
         <div className="auth-header">
           <Link className="brand" to="/store"><span className="brand-mark">U</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
           <div>
-            <h1>Forgot password</h1>
-            <p>Enter your email and we'll send instructions to reset your password.</p>
+            <h1>{t("forgotPasswordTitle")}</h1>
+            <p>{t("forgotPasswordLead")}</p>
           </div>
         </div>
 
@@ -45,7 +47,7 @@ export default function ForgotPasswordPage() {
             className="input"
             name="email"
             type="email"
-            placeholder="Email"
+            placeholder={t("emailPlaceholder")}
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -53,8 +55,8 @@ export default function ForgotPasswordPage() {
           />
           {message && <div className="success-message">{message}</div>}
           {error && <div className="error-message">{error}</div>}
-          <button className="primary-btn" type="submit" disabled={loading}>{loading ? "Sending..." : "Send reset link"}</button>
-          <Link className="secondary-btn" to="/login">← Back to login</Link>
+          <button className="primary-btn" type="submit" disabled={loading}>{loading ? t("sending") : t("sendResetLink")}</button>
+          <Link className="secondary-btn" to="/login">{t("backToLogin")}</Link>
         </form>
       </section>
     </main>

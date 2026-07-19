@@ -21,6 +21,10 @@ export const env = {
   appleCallbackUrl: process.env.APPLE_CALLBACK_URL || "http://127.0.0.1:8081/api/auth/apple/callback",
   emailFrom: process.env.EMAIL_FROM || "URBA TECH <noreply@urbatechinter.com>",
   resendApiKey: process.env.RESEND_API_KEY || "",
+  adminNotificationEmails: process.env.ADMIN_NOTIFICATION_EMAILS
+    ? process.env.ADMIN_NOTIFICATION_EMAILS.split(",").map((email) => email.trim()).filter(Boolean)
+    : [],
+  lowStockThreshold: Number(process.env.LOW_STOCK_THRESHOLD || 3),
   // PayPal credentials (set for enabling PayPal payments)
   paypalClientId: process.env.PAYPAL_CLIENT_ID || "",
   paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET || "",

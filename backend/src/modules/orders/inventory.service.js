@@ -1,4 +1,5 @@
 import { getCollection } from "../../db/mongo.js";
+import { notifyAdminLowStock } from "../notifications/notification.service.js";
 
 export async function reserveStockForItems(items, orderId) {
   const products = await getCollection("products");
@@ -29,6 +30,12 @@ export async function reserveStockForItems(items, orderId) {
       error.status = 409;
       throw error;
     }
+
+    const product = await products.findOne(
+      { id: item.product_id },
+      { projection: { _id: 0, id: 1, name: 1, stock: 1, supplier_id: 1 } }
+    );
+    notifyAdminLowStock(product).catch((err) => console.error("[notification:low-stock]", err.message));
 
     reserved.push({ product_id: item.product_id, quantity });
   }

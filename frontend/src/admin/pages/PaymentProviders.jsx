@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../../store/StoreContext.jsx";
+import { t, useLocale } from "../../i18n.js";
 
 export default function PaymentProviders() {
+  useLocale();
   const { user, paymentProviders, refreshPaymentProviders, updatePaymentProvider } = useStore();
   const [error, setError] = useState("");
   const [savingId, setSavingId] = useState(null);
@@ -15,7 +17,7 @@ export default function PaymentProviders() {
 
   useEffect(() => {
     if (!user?.token) return;
-    refreshPaymentProviders().catch((err) => setError(err.message || "Unable to load payment providers."));
+    refreshPaymentProviders().catch((err) => setError(err.message || t("unableToLoadPaymentProviders")));
   }, [user?.token]);
 
   useEffect(() => {
@@ -36,7 +38,7 @@ export default function PaymentProviders() {
       await updatePaymentProvider(provider.id, { enabled: !provider.enabled });
       await refreshPaymentProviders();
     } catch (err) {
-      setError(err.message || "Unable to update provider.");
+      setError(err.message || t("unableToUpdateProvider"));
     } finally {
       setSavingId(null);
     }
@@ -64,7 +66,7 @@ export default function PaymentProviders() {
     try {
       configPayload = JSON.parse(editingConfig);
     } catch (err) {
-      setError("Config must be valid JSON.");
+      setError(t("configMustBeValidJson"));
       setSavingEdit(false);
       return;
     }
@@ -79,7 +81,7 @@ export default function PaymentProviders() {
       await refreshPaymentProviders();
       cancelEdit();
     } catch (err) {
-      setError(err.message || "Unable to save provider.");
+      setError(err.message || t("unableToSaveProvider"));
     } finally {
       setSavingEdit(false);
     }
@@ -91,26 +93,24 @@ export default function PaymentProviders() {
     <main className="admin-main">
       <div className="admin-page-head">
         <div>
-          <p className="eyebrow">Payments</p>
-          <h2>Payment Providers</h2>
+          <p className="eyebrow">{t("payments")}</p>
+          <h2>{t("paymentProvidersTitle")}</h2>
         </div>
       </div>
       {error && <div className="error-message">{error}</div>}
       <section className="panel">
-        <p>
-          Enable only real online payment gateways. Stripe redirects customers to hosted card and wallet checkout. PayPal redirects customers to PayPal checkout. Offline methods are not shown as Pay buttons.
-        </p>
+        <p>{t("paymentProvidersLead")}</p>
       </section>
       <section className="panel">
         <div className="table-responsive">
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Key</th>
-                <th>Description</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>{t("displayName")}</th>
+                <th>{t("providerKey")}</th>
+                <th>{t("description")}</th>
+                <th>{t("status")}</th>
+                <th>{t("actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -119,7 +119,7 @@ export default function PaymentProviders() {
                   <td>{provider.name}</td>
                   <td>{provider.provider_key}</td>
                   <td>{provider.description}</td>
-                  <td>{provider.enabled ? "Enabled" : "Disabled"}</td>
+                  <td>{provider.enabled ? t("enabled") : t("disabled")}</td>
                   <td>
                     <button
                       className="secondary-btn"
@@ -127,7 +127,7 @@ export default function PaymentProviders() {
                       disabled={savingId === provider.id}
                       onClick={() => toggleEnabled(provider)}
                     >
-                      {provider.enabled ? "Disable" : "Enable"}
+                      {provider.enabled ? t("disable") : t("enable")}
                     </button>
                     <button
                       className="secondary-btn"
@@ -135,7 +135,7 @@ export default function PaymentProviders() {
                       style={{ marginLeft: "0.5rem" }}
                       onClick={() => startEdit(provider)}
                     >
-                      Edit
+                      {t("edit")}
                     </button>
                   </td>
                 </tr>
@@ -147,15 +147,15 @@ export default function PaymentProviders() {
 
       {activeProvider && (
         <section className="panel">
-          <h3>Edit {activeProvider.name}</h3>
+          <h3>{`${t("editProviderTitle")} ${activeProvider.name}`}</h3>
           <form className="form-grid" onSubmit={saveEdit}>
             <div className="form-grid two">
               <label>
-                Provider Key
+                {t("providerKey")}
                 <input className="input" value={editingProviderKey} readOnly />
               </label>
               <label>
-                Display Name
+                {t("displayName")}
                 <input
                   className="input"
                   value={editingName}
@@ -166,19 +166,19 @@ export default function PaymentProviders() {
             </div>
             <div className="form-grid two">
               <label>
-                Enabled
+                {t("status")}
                 <select
                   className="select"
                   value={editingEnabled ? "true" : "false"}
                   onChange={(event) => setEditingEnabled(event.target.value === "true")}
                 >
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
+                  <option value="true">{t("enabled")}</option>
+                  <option value="false">{t("disabled")}</option>
                 </select>
               </label>
             </div>
             <label>
-              Description
+              {t("description")}
               <textarea
                 className="input"
                 rows={3}
@@ -187,7 +187,7 @@ export default function PaymentProviders() {
               />
             </label>
             <label>
-              Config (JSON)
+              {t("config")} (JSON)
               <textarea
                 className="input"
                 rows={8}
@@ -197,10 +197,10 @@ export default function PaymentProviders() {
             </label>
             <div className="form-grid two">
               <button className="primary-btn" type="submit" disabled={savingEdit}>
-                {savingEdit ? "Saving..." : "Save provider"}
+                {savingEdit ? t("savingSupplier") : t("saveProvider")}
               </button>
               <button className="secondary-btn" type="button" onClick={cancelEdit}>
-                Cancel
+                {t("cancel")}
               </button>
             </div>
           </form>

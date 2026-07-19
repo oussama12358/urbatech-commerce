@@ -1,5 +1,6 @@
 import { env } from "../../config/env.js";
 import { createId, getCollection } from "../../db/mongo.js";
+import { notifyCustomerRefundCompleted, notifyCustomerRefundInitiated } from "../notifications/notification.service.js";
 import { releaseStockForItems } from "../orders/inventory.service.js";
 import {
   getPaymentProviderByKey,
@@ -170,6 +171,7 @@ export async function refundOrder(orderId, payload = {}) {
     created_at: new Date()
   };
   await refunds.insertOne(refund);
+  notifyCustomerRefundInitiated(order.id, refund).catch((err) => console.error("[notification:refund-initiated]", err.message));
 
   const nextRefundAmount = roundMoney(alreadyRefunded + (gateway.status === "succeeded" || gateway.status === "manual_required" ? amount : 0));
   const fullyRefunded = nextRefundAmount >= roundMoney(order.total || 0);
@@ -207,6 +209,10 @@ export async function refundOrder(orderId, payload = {}) {
       }
     }
   );
+
+  if (gateway.status === "succeeded" || gateway.status === "manual_required") {
+    notifyCustomerRefundCompleted(order.id, refund).catch((err) => console.error("[notification:refund-completed]", err.message));
+  }
 
   return { ...refund, stock_released: stockReleased };
 }

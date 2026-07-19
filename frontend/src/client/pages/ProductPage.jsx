@@ -3,8 +3,21 @@ import { Check, FileText, ShoppingCart } from "lucide-react";
 import ProductArt from "../components/ProductArt.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
 import { money } from "../../shared/lib/format.js";
+import { t, useLocale } from "../../i18n.js";
+
+function translateProductStatus(status) {
+  if (!status) return "";
+  if (status === "Quote ready") return status;
+  if (status === "In stock") return t("inStock");
+  if (status === "Available") return t("available");
+  if (status === "Low stock") return t("lowStock");
+  if (status === "Out of stock") return t("outOfStock");
+  if (status === "Preorder") return t("preorderStatus");
+  return status;
+}
 
 export default function ProductPage() {
+  useLocale();
   const { id } = useParams();
   const navigate = useNavigate();
   const { products, addToCart, cart } = useStore();
@@ -14,7 +27,7 @@ export default function ProductPage() {
   if (!product) {
     return (
       <main className="main">
-        <div className="empty">Product not found.</div>
+        <div className="empty">{t("productNotFound")}</div>
       </main>
     );
   }
@@ -31,10 +44,10 @@ export default function ProductPage() {
           <h1>{product.name}</h1>
           <p className="lead">{product.desc}</p>
           <div className="kv">
-            <div className="kv-row"><span>Price</span><strong>{money(product.price)}</strong></div>
-            <div className="kv-row"><span>Availability</span><strong>{product.status} - {product.stock} units</strong></div>
-            <div className="kv-row"><span>Lead time</span><strong>{product.lead}</strong></div>
-            <div className="kv-row"><span>Warranty</span><strong>{product.warranty}</strong></div>
+            <div className="kv-row"><span>{t("price")}</span><strong>{money(product.price)}</strong></div>
+            <div className="kv-row"><span>{t("availability")}</span><strong>{product.status} - {product.stock} {t("units")}</strong></div>
+            <div className="kv-row"><span>{t("leadTime")}</span><strong>{product.lead}</strong></div>
+            <div className="kv-row"><span>{t("warranty")}</span><strong>{product.warranty}</strong></div>
           </div>
           <div className="specs">
             {product.specs.map((spec) => <span className="spec" key={spec}>{spec}</span>)}
@@ -43,18 +56,18 @@ export default function ProductPage() {
             <button className="primary-btn" disabled={isInCart} onClick={() => {
               addToCart(product.id);
             }}>
-              {isInCart ? <Check /> : <ShoppingCart />} {isInCart ? "In cart" : "Add to cart"}
+              {isInCart ? <Check /> : <ShoppingCart />} {isInCart ? t("inCart") : t("addToCart")}
             </button>
             <button className="secondary-btn" type="button" onClick={() => {
               if (!isInCart) {
                 addToCart(product.id);
               }
               navigate("/checkout");
-            }}><FileText /> Buy Now</button>
+            }}><FileText /> {t("buyNow")}</button>
           </div>
           {isInCart && (
             <div className="notice" style={{ marginTop: 12, color: "#1c7ed6" }}>
-              This product is already in your cart.
+              {t("alreadyInCart")}
             </div>
           )}
         </section>

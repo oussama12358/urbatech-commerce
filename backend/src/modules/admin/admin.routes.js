@@ -178,6 +178,7 @@ adminRouter.get("/monitoring", async (_req, res, next) => {
     const dispatchJobs = await getCollection("supplier_dispatch_jobs");
     const settlements = await getCollection("supplier_settlements");
     const refunds = await getCollection("refunds");
+    const notifications = await getCollection("email_notifications");
 
     const [
       dispatchFailed,
@@ -187,7 +188,9 @@ adminRouter.get("/monitoring", async (_req, res, next) => {
       payoutHeld,
       refundManual,
       refundFailed,
-      webhookRecentlySynced
+      webhookRecentlySynced,
+      emailFailed,
+      emailSkipped
     ] = await Promise.all([
       dispatchJobs.countDocuments({ status: "failed" }),
       dispatchJobs.countDocuments({ status: "pending" }),
@@ -196,7 +199,9 @@ adminRouter.get("/monitoring", async (_req, res, next) => {
       settlements.countDocuments({ status: "held" }),
       refunds.countDocuments({ status: "manual_required" }),
       refunds.countDocuments({ status: "failed" }),
-      orders.countDocuments({ supplier_status_synced_at: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } })
+      orders.countDocuments({ supplier_status_synced_at: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
+      notifications.countDocuments({ status: "failed" }),
+      notifications.countDocuments({ status: { $in: ["skipped_config", "skipped_no_recipient"] } })
     ]);
 
     res.json({
@@ -208,9 +213,30 @@ adminRouter.get("/monitoring", async (_req, res, next) => {
         payout_held: payoutHeld,
         refund_manual_required: refundManual,
         refund_failed: refundFailed,
-        supplier_status_updates_24h: webhookRecentlySynced
+        supplier_status_updates_24h: webhookRecentlySynced,
+        email_failed: emailFailed,
+        email_skipped: emailSkipped
       }
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.get("/notifications", async (req, res, next) => {
+  try {
+    const notifications = await getCollection("email_notifications");
+    const query = {
+      ...(req.query.status ? { status: req.query.status } : {}),
+      ...(req.query.type ? { type: req.query.type } : {})
+    };
+    const rows = await notifications
+      .find(query)
+      .project({ _id: 0, html: 0 })
+      .sort({ created_at: -1 })
+      .limit(Number(req.query.limit || 200))
+      .toArray();
+    res.json({ data: rows });
   } catch (err) {
     next(err);
   }

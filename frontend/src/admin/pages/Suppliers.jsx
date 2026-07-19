@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Eye, Plug, RefreshCw, Trash2 } from "lucide-react";
 import { useStore } from "../../store/StoreContext.jsx";
+import { t, useLocale } from "../../i18n.js";
 
 const defaultCapabilities = {
   supports_products: true,
@@ -11,6 +12,7 @@ const defaultCapabilities = {
 };
 
 export default function Suppliers() {
+  useLocale();
   const { suppliers, addSupplier, deleteSupplier, testSupplier, syncSupplier } = useStore();
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
@@ -28,13 +30,13 @@ export default function Suppliers() {
     const normalized = message.toLowerCase();
 
     if (!message) {
-      return "Unable to connect to supplier. Please verify the API URL and credentials.";
+      return t("unableToConnectSupplier");
     }
     if (normalized.includes("failed to parse url") || normalized.includes("invalid url") || normalized.includes("invalid api url")) {
-      return "❌ Invalid API URL. Example: https://supplier.com/api";
+      return t("invalidApiUrlExample");
     }
     if (normalized.includes("failed to fetch") || normalized.includes("network") || normalized.includes("timeout") || normalized.includes("refused") || normalized.includes("connect")) {
-      return "Unable to connect to supplier. Please verify the API URL and credentials.";
+      return t("unableToConnectSupplier");
     }
     return message;
   };
@@ -48,7 +50,7 @@ export default function Suppliers() {
     const form = Object.fromEntries(new FormData(event.currentTarget));
     const apiUrl = String(form.api_url || "").trim();
     if (!apiUrl) {
-      setError("API URL is required.");
+      setError(t("apiUrlRequired"));
       setFormPhase("idle");
       return;
     }
@@ -56,7 +58,7 @@ export default function Suppliers() {
     try {
       new URL(apiUrl);
     } catch {
-      setError("❌ Invalid API URL. Example: https://supplier.com/api");
+      setError(t("invalidApiUrlExample"));
       setFormPhase("idle");
       return;
     }
@@ -65,10 +67,12 @@ export default function Suppliers() {
       company_name: form.company_name,
       adapter: form.adapter,
       api_url: apiUrl,
+      notification_email: form.notification_email,
+      contact_email: form.notification_email,
       auth_mode: form.auth_mode,
       api_key: form.api_key,
       api_secret: form.api_secret,
-      api_key_header: form.api_key_header || "X-API-Key",
+      api_key_header: form.api_key_header || t("apiKeyHeaderDefault"),
       webhook_secret: form.webhook_secret,
       custom_headers: authMode === "custom-headers"
         ? customHeaders.reduce((headers, entry) => {
@@ -97,7 +101,7 @@ export default function Suppliers() {
         setError(getFriendlyError(testError));
       }
     } catch (err) {
-      setError(getFriendlyError(err) || "Unable to add supplier");
+      setError(getFriendlyError(err) || t("unableToAddSupplier"));
       setFormPhase("idle");
     }
   };
@@ -134,7 +138,7 @@ export default function Suppliers() {
       setBusyId(id);
       await action(id);
     } catch (err) {
-      setError(err.message || "Supplier action failed");
+      setError(err.message || t("supplierActionFailed"));
     } finally {
       setBusyId("");
     }
@@ -161,7 +165,7 @@ export default function Suppliers() {
   };
 
   const renderStatus = (status) => {
-    const value = status || "Disconnected";
+    const value = status || t("disconnected");
     return (
       <span className={`status-pill ${statusVariant(value)}`}>
         {value}
@@ -170,18 +174,18 @@ export default function Suppliers() {
   };
 
   const renderHealth = (health) => {
-    let label = "Unknown";
+    let label = t("unknown");
     let variant = "unknown";
     const value = (health || "").toString().toLowerCase();
 
     if (value.includes("healthy") || value.includes("ok") || value.includes("good")) {
-      label = "Healthy";
+      label = t("healthy");
       variant = "healthy";
     } else if (value.includes("warn") || value.includes("degraded")) {
-      label = "Warning";
+      label = t("warning");
       variant = "warning";
     } else if (value.includes("offline") || value.includes("down") || value.includes("failed")) {
-      label = "Offline";
+      label = t("offline");
       variant = "offline";
     }
 
@@ -193,17 +197,17 @@ export default function Suppliers() {
   };
 
   const formatLastSync = (timestamp) => {
-    if (!timestamp) return "Never synced";
+    if (!timestamp) return t("neverSynced");
     const date = new Date(timestamp);
     const diffSeconds = Math.round((Date.now() - date.getTime()) / 1000);
-    if (diffSeconds < 60) return `${diffSeconds}s ago`;
+    if (diffSeconds < 60) return t("secondsAgo").replace("{count}", diffSeconds);
     const diffMinutes = Math.round(diffSeconds / 60);
-    if (diffMinutes < 60) return `${diffMinutes} min ago`;
+    if (diffMinutes < 60) return t("minutesAgo").replace("{count}", diffMinutes);
     const diffHours = Math.round(diffMinutes / 60);
-    if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+    if (diffHours < 24) return t("hoursAgo").replace("{count}", diffHours);
     const diffDays = Math.round(diffHours / 24);
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays === 1) return t("yesterday");
+    if (diffDays < 7) return t("daysAgo").replace("{count}", diffDays);
     return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
   };
 
@@ -215,41 +219,47 @@ export default function Suppliers() {
     <main className="admin-main">
       <div className="admin-page-head">
         <div>
-          <p className="eyebrow">Supply chain</p>
-          <h2>Suppliers Integration</h2>
-          <p className="page-copy">Connect suppliers and synchronize products, inventory and orders.</p>
+          <p className="eyebrow">{t("supplyChain")}</p>
+          <h2>{t("suppliersIntegration")}</h2>
+          <p className="page-copy">{t("suppliersIntegrationLead")}</p>
         </div>
       </div>
 
       <section className="panel form-grid supplier-panel" style={{ marginBottom: 18 }}>
         <div className="admin-section-head">
           <div>
-            <h2>New Supplier</h2>
-            <span>Configure a supplier REST API.</span>
+            <h2>{t("newSupplier")}</h2>
+            <span>{t("configureSupplierLead")}</span>
           </div>
         </div>
         {error && <div className="error-message">{error}</div>}
         <form ref={formRef} className="form-grid supplier-form" onSubmit={submit}>
           <div className="form-grid three">
             <label className="field-group">
-              <span>Company name</span>
-              <input className="input" name="company_name" placeholder="Supplier company name" required />
+              <span>{t("companyName")}</span>
+              <input className="input" name="company_name" placeholder={t("supplierCompanyPlaceholder")} required />
             </label>
             <label className="field-group">
-              <span>Integration type</span>
+              <span>{t("integrationType")}</span>
               <select className="select" name="adapter" defaultValue="universal">
-                <option value="universal">Universal REST API</option>
+                <option value="universal">{t("universalRestApi")}</option>
               </select>
             </label>
             <label className="field-group">
-              <span>API URL</span>
-              <input className="input" name="api_url" placeholder="https://supplier.com/api" required />
+              <span>{t("apiUrl")}</span>
+              <input className="input" name="api_url" placeholder={t("apiUrlPlaceholder")} required />
             </label>
           </div>
 
+          <label className="field-group full-width">
+            <span>{t("supplierNotificationEmail")}</span>
+            <input className="input" name="notification_email" type="email" placeholder="supplier@example.com" />
+            <small className="field-hint">{t("supplierNotificationEmailHint")}</small>
+          </label>
+
           <div className="form-grid three">
             <label className="field-group">
-              <span>Authentication</span>
+              <span>{t("authentication")}</span>
               <select
                 className="select"
                 name="auth_mode"
@@ -262,30 +272,30 @@ export default function Suppliers() {
                   }
                 }}
               >
-                <option value="bearer">Bearer Token</option>
-                <option value="api-key">API Key (Header)</option>
-                <option value="basic">API Key + Secret</option>
-                <option value="custom-headers">Custom Headers</option>
-                <option value="none">No Authentication</option>
+                <option value="bearer">{t("bearerToken")}</option>
+                <option value="api-key">{t("apiKeyHeader")}</option>
+                <option value="basic">{t("apiKeySecret")}</option>
+                <option value="custom-headers">{t("customHeaders")}</option>
+                <option value="none">{t("noAuthentication")}</option>
               </select>
             </label>
 
             {authMode === "bearer" && (
               <label className="field-group">
-                <span>Bearer Token</span>
-                <input className="input" name="api_key" placeholder="Bearer token" />
+                <span>{t("bearerToken")}</span>
+                <input className="input" name="api_key" placeholder={t("bearerTokenPlaceholder")} />
               </label>
             )}
 
             {authMode === "api-key" && (
               <>
                 <label className="field-group">
-                  <span>Header name</span>
-                  <input className="input" name="api_key_header" defaultValue="X-API-Key" />
+                  <span>{t("headerName")}</span>
+                  <input className="input" name="api_key_header" defaultValue={t("apiKeyHeaderDefault")} />
                 </label>
                 <label className="field-group">
-                  <span>API Key</span>
-                  <input className="input" name="api_key" placeholder="API key" />
+                  <span>{t("apiKey")}</span>
+                  <input className="input" name="api_key" placeholder={t("apiKeyPlaceholder")} />
                 </label>
               </>
             )}
@@ -293,12 +303,12 @@ export default function Suppliers() {
             {authMode === "basic" && (
               <>
                 <label className="field-group">
-                  <span>API Key</span>
-                  <input className="input" name="api_key" placeholder="API key" />
+                  <span>{t("apiKey")}</span>
+                  <input className="input" name="api_key" placeholder={t("apiKeyPlaceholder")} />
                 </label>
                 <label className="field-group">
-                  <span>Secret Key</span>
-                  <input className="input" name="api_secret" placeholder="Secret Key" />
+                  <span>{t("secretKey")}</span>
+                  <input className="input" name="api_secret" placeholder={t("secretKeyPlaceholder")} />
                 </label>
               </>
             )}
@@ -306,12 +316,12 @@ export default function Suppliers() {
             {authMode === "custom-headers" && (
               <div className="custom-headers full-width">
                 <div className="custom-headers-title">
-                  <span>Custom headers</span>
-                  <p className="field-note">Add any request headers required by the supplier API.</p>
+                  <span>{t("customHeaders")}</span>
+                  <p className="field-note">{t("customHeadersNote")}</p>
                 </div>
                 <div className="custom-headers-headings">
-                  <span>Header name</span>
-                  <span>Header value</span>
+                  <span>{t("headerName")}</span>
+                  <span>{t("headerValue")}</span>
                   <span />
                 </div>
                 {customHeaders.map((header, index) => (
@@ -325,7 +335,7 @@ export default function Suppliers() {
                           next[index] = { ...next[index], name: event.target.value };
                           setCustomHeaders(next);
                         }}
-                        placeholder="X-API-Key"
+                        placeholder={t("apiKeyHeaderDefault")}
                       />
                     </label>
                     <label className="field-group">
@@ -337,7 +347,7 @@ export default function Suppliers() {
                           next[index] = { ...next[index], value: event.target.value };
                           setCustomHeaders(next);
                         }}
-                        placeholder="abc123 or Bearer token"
+                        placeholder={t("apiKeyHeaderValuePlaceholder")}
                       />
                     </label>
                     <button
@@ -345,7 +355,7 @@ export default function Suppliers() {
                       type="button"
                       onClick={() => setCustomHeaders(customHeaders.filter((_, idx) => idx !== index))}
                     >
-                      Remove
+                      {t("remove")}
                     </button>
                   </div>
                 ))}
@@ -354,20 +364,20 @@ export default function Suppliers() {
                   type="button"
                   onClick={() => setCustomHeaders([...customHeaders, { name: "", value: "" }])}
                 >
-                  Add header
+                  {t("addHeader")}
                 </button>
               </div>
             )}
 
             {authMode === "none" && (
-              <div className="field-note full-width">No credentials required. This supplier will connect without authentication.</div>
+              <div className="field-note full-width">{t("noCredentialsRequired")}</div>
             )}
           </div>
 
           <label className="field-group full-width">
-            <span>Webhook Secret (Optional)</span>
-            <input className="input" name="webhook_secret" placeholder="Optional" />
-            <small className="field-hint">Only required if your supplier supports signed webhooks.</small>
+            <span>{t("webhookSecretOptional")}</span>
+            <input className="input" name="webhook_secret" placeholder={t("optional")} />
+            <small className="field-hint">{t("webhookSecretHint")}</small>
           </label>
 
           <div className="capability-grid">
@@ -376,29 +386,29 @@ export default function Suppliers() {
                 <input type="checkbox" name={name} defaultChecked />
                 <div>
                   <strong>{name.replace("supports_", "").replace("_", " ")}</strong>
-                  <span>Sync catalog</span>
+                  <span>{t("syncCatalog")}</span>
                 </div>
               </label>
             ))}
           </div>
 
-          {formPhase === "saving" && <div className="form-status-banner">Saving supplier...</div>}
-          {formPhase === "testing" && <div className="form-status-banner">Testing API connection...</div>}
-          {formPhase === "success" && <div className="form-status-success">✅ Supplier saved successfully.</div>}
+          {formPhase === "saving" && <div className="form-status-banner">{t("savingSupplier")}</div>}
+          {formPhase === "testing" && <div className="form-status-banner">{t("testingApiConnection")}</div>}
+          {formPhase === "success" && <div className="form-status-success">✅ {t("supplierSavedSuccessfully")}</div>}
           {formPhase === "failed" && error && (
             <div className="form-status-error">
-              <strong>❌ Unable to connect to supplier.</strong>
+              <strong>❌ {t("unableToConnectToSupplier")}</strong>
               <p>{error}</p>
               <div className="pending-actions">
-                <button className="secondary-btn" type="button" onClick={discardPendingSupplier}>Discard</button>
-                <button className="primary-btn" type="button" onClick={retainPendingSupplier}>Save anyway</button>
+                <button className="secondary-btn" type="button" onClick={discardPendingSupplier}>{t("discard")}</button>
+                <button className="primary-btn" type="button" onClick={retainPendingSupplier}>{t("saveAnyway")}</button>
               </div>
             </div>
           )}
 
           <div className="button-row">
             <button className="primary-btn supplier-save-btn" type="submit" disabled={formPhase === "saving" || formPhase === "testing"}>
-              {formPhase === "saving" ? "Saving..." : formPhase === "testing" ? "Testing..." : "Save supplier"}
+              {formPhase === "saving" ? t("savingSupplier") : formPhase === "testing" ? t("testingApiConnection") : t("saveSupplier")}
             </button>
           </div>
         </form>
@@ -406,18 +416,18 @@ export default function Suppliers() {
 
       <section className="panel">
         <div className="admin-section-head">
-          <h2>Connected suppliers</h2>
-          <span>{suppliers.filter((supplier) => !pendingSupplier || supplier.id !== pendingSupplier.id).length} suppliers</span>
+          <h2>{t("connectedSuppliersTitle")}</h2>
+          <span>{suppliers.filter((supplier) => !pendingSupplier || supplier.id !== pendingSupplier.id).length} {t("suppliers")}</span>
         </div>
         {suppliers.length ? (
           <table className="table">
             <thead>
               <tr>
-                <th>Supplier</th>
-                <th>Status</th>
-                <th>API health</th>
-                <th>Last sync</th>
-                <th>Actions</th>
+                <th>{t("supplier")}</th>
+                <th>{t("status")}</th>
+                <th>{t("apiHealth")}</th>
+                <th>{t("lastSync")}</th>
+                <th>{t("actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -434,7 +444,7 @@ export default function Suppliers() {
                         <button
                           className="icon-btn"
                           type="button"
-                          title="Connect / Test API"
+                          title={t("connectTestApi")}
                           disabled={busyId === supplier.id}
                           onClick={() => runAction(supplier.id, testSupplier)}
                         >
@@ -443,7 +453,7 @@ export default function Suppliers() {
                         <button
                           className="icon-btn"
                           type="button"
-                          title="Sync products"
+                          title={t("syncProducts")}
                           disabled={busyId === supplier.id}
                           onClick={() => runAction(supplier.id, syncSupplier)}
                         >
@@ -452,7 +462,7 @@ export default function Suppliers() {
                         <button
                           className="icon-btn"
                           type="button"
-                          title="Supplier details"
+                          title={t("supplierDetails")}
                           disabled={busyId === supplier.id}
                           onClick={() => openSupplierDetails(supplier)}
                         >
@@ -461,7 +471,7 @@ export default function Suppliers() {
                         <button
                           className="icon-btn danger-icon"
                           type="button"
-                          title="Delete supplier"
+                          title={t("deleteSupplier")}
                           disabled={busyId === supplier.id}
                           onClick={() => promptDeleteSupplier(supplier)}
                         >
@@ -477,8 +487,8 @@ export default function Suppliers() {
           <div className="empty-state">
             <div>
               <div className="empty-state-icon">📦</div>
-              <h3>No suppliers connected yet.</h3>
-              <p>Connect your first supplier to start synchronizing products and orders.</p>
+              <h3>{t("noSuppliersConnectedYet")}</h3>
+              <p>{t("connectYourFirstSupplierLead")}</p>
             </div>
           </div>
         )}
@@ -496,33 +506,37 @@ export default function Suppliers() {
             <h2 id="supplier-details-title">{detailsSupplier.company_name}</h2>
             <div className="supplier-details-grid">
               <div>
-                <strong>API URL</strong>
+                <strong>{t("apiUrl")}</strong>
                 <p>{detailsSupplier.api_url}</p>
               </div>
               <div>
-                <strong>Authentication</strong>
+                <strong>{t("supplierNotificationEmail")}</strong>
+                <p>{detailsSupplier.notification_email || detailsSupplier.contact_email || "-"}</p>
+              </div>
+              <div>
+                <strong>{t("authentication")}</strong>
                 <p>{detailsSupplier.auth_mode}</p>
               </div>
               <div>
-                <strong>Status</strong>
-                <p>{detailsSupplier.status || "Disconnected"}</p>
+                <strong>{t("status")}</strong>
+                <p>{detailsSupplier.status || t("disconnected")}</p>
               </div>
               <div>
-                <strong>API health</strong>
-                <p>{detailsSupplier.api_health || "Unknown"}</p>
+                <strong>{t("apiHealth")}</strong>
+                <p>{detailsSupplier.api_health || t("unknown")}</p>
               </div>
               <div>
-                <strong>Last sync</strong>
+                <strong>{t("lastSync")}</strong>
                 <p>{formatLastSync(detailsSupplier.last_sync_at)}</p>
               </div>
               <div>
-                <strong>Webhook</strong>
-                <p>{detailsSupplier.webhook_secret ? "Enabled" : "Disabled"}</p>
+                <strong>{t("webhook")}</strong>
+                <p>{detailsSupplier.webhook_secret ? t("enabled") : t("disabled")}</p>
               </div>
             </div>
             <div className="confirm-actions">
               <button className="secondary-btn" type="button" onClick={closeSupplierDetails}>
-                Close
+                {t("close")}
               </button>
             </div>
           </section>
@@ -537,8 +551,8 @@ export default function Suppliers() {
             aria-labelledby="supplier-delete-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <h2 id="supplier-delete-title">Delete supplier</h2>
-            <p>This will remove the supplier integration. Imported products will remain in your database unless you choose to delete them.</p>
+            <h2 id="supplier-delete-title">{t("deleteSupplier")}</h2>
+            <p>{t("deleteSupplierWarning")}</p>
             <label className="field-group">
               <span>
                 <input
@@ -547,18 +561,18 @@ export default function Suppliers() {
                   onChange={(event) => setDeleteImportedProducts(event.target.checked)}
                   style={{ marginRight: 8 }}
                 />
-                Delete imported products
+                {t("deleteImportedProducts")}
               </span>
               <small>
-                This only removes current product records from the catalogue. Past orders, invoices, payments and sales history remain unchanged.
+                {t("deleteImportedProductsHint")}
               </small>
             </label>
             <div className="confirm-actions">
               <button className="secondary-btn" type="button" onClick={closeDeleteSupplier}>
-                Cancel
+                {t("cancel")}
               </button>
               <button className="danger-btn" type="button" onClick={confirmDeleteSupplier}>
-                Delete
+                {t("delete")}
               </button>
             </div>
           </section>
