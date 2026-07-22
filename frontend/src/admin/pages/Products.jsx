@@ -7,11 +7,12 @@ import { useStore } from "../../store/StoreContext.jsx";
 import { t, useLocale } from "../../i18n.js";
 
 export default function Products() {
-  useLocale();
+  const locale = useLocale();
   const { products, categories, deleteProduct } = useStore();
   const [pendingDelete, setPendingDelete] = useState(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
+  const [source, setSource] = useState("All");
   const [status, setStatus] = useState("All");
   const [stock, setStock] = useState("All");
   const statuses = useMemo(() => ["All", ...new Set(products.map((product) => product.status).filter(Boolean))], [products]);
@@ -37,21 +38,27 @@ export default function Products() {
         ...(product.specs || [])
       ].join(" ").toLowerCase().includes(q);
       const matchesCategory = category === "All" || product.category === category;
+      const productSource = product.product_source || (product.supplier_id ? "api" : "internal");
+      const matchesSource = source === "All" || productSource === source;
       const matchesStatus = status === "All" || product.status === status;
       const matchesStock =
         stock === "All" ||
         (stock === "Available" && product.stock > 0) ||
         (stock === "Low" && product.stock > 0 && product.stock <= 10) ||
         (stock === "Out" && product.stock === 0);
-      return matchesQuery && matchesCategory && matchesStatus && matchesStock;
+      return matchesQuery && matchesCategory && matchesSource && matchesStatus && matchesStock;
     });
-  }, [category, products, query, status, stock]);
+  }, [category, products, query, source, status, stock]);
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     await deleteProduct(pendingDelete.id);
     setPendingDelete(null);
   };
+
+  const productCountLabel = locale === "ar"
+    ? `${t("products")} ${filteredProducts.length} ${t("of")} ${products.length}`
+    : `${filteredProducts.length} ${t("of")} ${products.length} ${t("products")}`;
 
   return (
     <main className="admin-main">
@@ -68,7 +75,7 @@ export default function Products() {
       <section className="panel">
         <div className="admin-section-head">
           <h2>{t("catalogueList")}</h2>
-          <span>{filteredProducts.length} {t("of")} {products.length} {t("products")}</span>
+          <span>{productCountLabel}</span>
         </div>
         <div className="admin-filter-bar">
           <input className="input" type="search" placeholder={t("searchProductsPlaceholder")} value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -77,6 +84,12 @@ export default function Products() {
             {categories.map((item) => (
               <option key={item.id} value={item.name}>{item.name}</option>
             ))}
+          </select>
+          <select className="select" value={source} onChange={(event) => setSource(event.target.value)}>
+            <option value="All">{t("allSources")}</option>
+            <option value="api">{t("sourceApi")}</option>
+            <option value="import">{t("sourceImport")}</option>
+            <option value="internal">{t("sourceInternal")}</option>
           </select>
           <select className="select" value={status} onChange={(event) => setStatus(event.target.value)}>
             {statuses.map((item) => (

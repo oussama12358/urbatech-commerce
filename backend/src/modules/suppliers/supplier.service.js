@@ -16,6 +16,34 @@ function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
+function normalizeKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function normalizeSupplierStatus(status, stock) {
+  const value = String(status || "").trim().toLowerCase();
+  if (value.includes("discontinued") || value.includes("deleted") || value.includes("removed") || value.includes("stopped")) {
+    return "discontinued";
+  }
+  if (value.includes("inactive") || value.includes("disabled")) {
+    return "inactive";
+  }
+  if (value.includes("out") || value.includes("rupture") || Number(stock || 0) <= 0) {
+    return "out_of_stock";
+  }
+  return "active";
+}
+
+function makeDedupeKey(item, supplierId) {
+  const barcode = normalizeKey(item.barcode);
+  if (barcode) return `barcode:${barcode}`;
+  const mpn = normalizeKey(item.mpn);
+  if (mpn) return `mpn:${mpn}`;
+  const sku = normalizeKey(item.supplier_product_id);
+  if (sku) return `supplier-sku:${normalizeKey(supplierId)}:${sku}`;
+  return `name:${slugify(item.name)}`;
+}
+
 function getPath(source, path) {
   if (!path || !source) return undefined;
   return path.split(".").reduce((value, key) => {
@@ -211,28 +239,40 @@ export async function syncSupplierProducts(id) {
   const adapter = getSupplierAdapter(supplier);
   const supplierProducts = await adapter.syncProducts();
   let updated = 0;
+  const syncAt = new Date();
 
   for (const item of supplierProducts) {
     if (!item.supplier_product_id) continue;
     const categoryId = await ensureCategoryId(item.category);
     const price = Number(item.price || 0);
     const costPrice = Number(item.cost_price || price);
+    const stock = Number(item.stock || 0);
     const margin = marginFrom(price, costPrice);
-    const productId = `${slugify(item.name) || "supplier-product"}-${item.supplier_product_id}`.slice(0, 80);
+    const productId = `${slugify(item.name) || "supplier-product"}-${String(id).slice(0, 8)}-${item.supplier_product_id}`.slice(0, 90);
+    const supplierStatus = normalizeSupplierStatus(item.status, stock);
     await products.updateOne(
       { supplier_id: id, supplier_product_id: item.supplier_product_id },
       {
         $set: {
           supplier_id: id,
           supplier_product_id: item.supplier_product_id,
+          product_source: "api",
+          sku: item.sku || item.supplier_product_id,
           category_id: categoryId,
           name: item.name,
           description: item.description || "",
           price,
           cost_price: costPrice,
           margin,
-          stock: Number(item.stock || 0),
+          stock,
           status: item.status || "In stock",
+          supplier_status: supplierStatus,
+          supplier_last_sync_at: syncAt,
+          brand: item.brand || null,
+          manufacturer: item.manufacturer || item.brand || null,
+          mpn: item.mpn || null,
+          barcode: item.barcode || null,
+          dedupe_key: makeDedupeKey(item, id),
           images: item.images || [],
           specs: item.specs || [],
           auto_sync: true,
@@ -249,7 +289,7 @@ export async function syncSupplierProducts(id) {
     notifyAdminLowStock({
       id: productId,
       name: item.name,
-      stock: Number(item.stock || 0),
+      stock,
       supplier_id: id
     }).catch((err) => console.error("[notification:low-stock]", err.message));
     updated += 1;
@@ -346,9 +386,9 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
     if (onlySupplierId && supplierId !== onlySupplierId) continue;
     if (successfulSupplierIds.has(supplierId)) continue;
 
-    const supplier = await suppliers.findOne({ id: supplierId, status: "Connected", supports_orders: true });
+    const supplier = await suppliers.findOne({ id: supplierId });
     if (!supplier) {
-      const error = new Error("Supplier is not connected or does not support orders");
+      const error = new Error("Supplier not found for dispatch");
       const retry = await enqueueSupplierDispatchRetry({ orderId: order.id, supplierId, error });
       notifyAdminAlert({
         subject: `Dispatch failed for order ${order.id}`,
@@ -362,6 +402,22 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
     }
     const supplierSubtotal = roundMoney(supplierItems.reduce((sum, item) => sum + Number(item.supplier_total || 0), 0));
     const commissionTotal = roundMoney(supplierItems.reduce((sum, item) => sum + Number(item.commission || 0), 0));
+    if (!supplier.api_url || !supplier.supports_orders || supplier.status !== "Connected") {
+      const manualDispatch = {
+        supplier_id: supplierId,
+        supplier_order_id: `MANUAL-${order.id}-${String(supplierId).slice(0, 8)}`,
+        supplier_payable: supplierSubtotal,
+        commission_total: commissionTotal,
+        status: "Manual fulfillment pending",
+        dispatch_mode: "manual",
+        dispatched_at: new Date()
+      };
+      dispatches.push(manualDispatch);
+      notifySupplierNewOrder(order.id, supplierId, manualDispatch).catch((notifyErr) => console.error("[notification:supplier-new-order]", notifyErr.message));
+      await suppliers.updateOne({ id: supplierId }, { $inc: { orders_today: 1 } });
+      continue;
+    }
+
     const adapter = getSupplierAdapter(supplier);
     try {
       const response = await adapter.createOrder({

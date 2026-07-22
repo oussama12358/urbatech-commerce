@@ -441,6 +441,27 @@ export function StoreProvider({ children }) {
     return json?.data;
   };
 
+  const importSupplierProducts = async (id, payload) => {
+    if (!user?.token) throw new Error("Admin authentication required");
+    const api = createApiClient(user.token);
+    const json = await api(`/suppliers/${id}/import-products`, { method: "POST", body: JSON.stringify(payload) });
+    if (!json?.data) throw new Error("Unable to import supplier products");
+    if (!payload.dryRun) {
+      await refreshSuppliers().catch(() => {});
+      await refreshCategories().catch(() => {});
+      const productsJson = await api("/products");
+      if (productsJson?.data) setProducts(productsJson.data);
+    }
+    return json.data;
+  };
+
+  const listSupplierProductImports = async (id) => {
+    if (!user?.token) throw new Error("Admin authentication required");
+    const api = createApiClient(user.token);
+    const json = await api(`/suppliers/${id}/imports`);
+    return json?.data || [];
+  };
+
   const updateProduct = async (id, product) => {
     if (!user?.token) throw new Error("Admin authentication required");
     const api = createApiClient(user.token);
@@ -557,6 +578,8 @@ export function StoreProvider({ children }) {
     deleteSupplier,
     testSupplier,
     syncSupplier,
+    importSupplierProducts,
+    listSupplierProductImports,
     refreshSuppliers,
     refreshPaymentProviders,
     updatePaymentProvider,

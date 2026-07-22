@@ -39,14 +39,21 @@ async function getDb() {
 
 async function ensureIndexes() {
   const database = client.db();
+  await ensureSupplierProductIndex(database);
   await database.collection("customers").createIndex({ email: 1 }, { unique: true });
   await database.collection("customers").createIndex({ id: 1 }, { unique: true });
   await database.collection("products").createIndex({ id: 1 }, { unique: true });
   await database.collection("products").createIndex({ supplier_id: 1 });
-  await database.collection("products").createIndex(
-    { supplier_id: 1, supplier_product_id: 1 },
-    { unique: true, partialFilterExpression: { supplier_id: { $exists: true }, supplier_product_id: { $exists: true } } }
-  );
+  await database.collection("products").createIndex({ product_source: 1 });
+  await database.collection("products").createIndex({ supplier_status: 1 });
+  await database.collection("products").createIndex({ supplier_last_sync_at: -1 });
+  await database.collection("products").createIndex({ dedupe_key: 1 });
+  await database.collection("products").createIndex({ barcode: 1 }, { sparse: true });
+  await database.collection("products").createIndex({ mpn: 1 }, { sparse: true });
+  await database.collection("products").createIndex({ sku: 1 }, { sparse: true });
+  await database.collection("products").createIndex({ slug: 1 }, { sparse: true });
+  await database.collection("products").createIndex({ visibility: 1 });
+  await database.collection("products").createIndex({ featured: 1 });
   await database.collection("suppliers").createIndex({ id: 1 }, { unique: true });
   await database.collection("suppliers").createIndex({ company_name: 1 }, { unique: true });
   await database.collection("categories").createIndex({ id: 1 }, { unique: true });
@@ -65,6 +72,8 @@ async function ensureIndexes() {
   await database.collection("supplier_settlements").createIndex({ id: 1 }, { unique: true });
   await database.collection("supplier_settlements").createIndex({ order_id: 1, supplier_id: 1 }, { unique: true });
   await database.collection("supplier_settlements").createIndex({ status: 1, created_at: -1 });
+  await database.collection("product_import_batches").createIndex({ id: 1 }, { unique: true });
+  await database.collection("product_import_batches").createIndex({ supplier_id: 1, created_at: -1 });
   await database.collection("refunds").createIndex({ id: 1 }, { unique: true });
   await database.collection("refunds").createIndex({ order_id: 1 });
   await database.collection("email_notifications").createIndex({ dedupe_key: 1 }, { sparse: true });
@@ -72,6 +81,28 @@ async function ensureIndexes() {
   await database.collection("email_notifications").createIndex({ status: 1, created_at: -1 });
   await database.collection("app_settings").createIndex({ key: 1 }, { unique: true });
   await database.collection("payment_providers").createIndex({ provider_key: 1 }, { unique: true });
+}
+
+async function ensureSupplierProductIndex(database) {
+  const products = database.collection("products");
+  const indexName = "supplier_id_1_supplier_product_id_1";
+  const desiredPartial = {
+    supplier_id: { $type: "string" },
+    supplier_product_id: { $type: "string" }
+  };
+  const existing = (await products.indexes()).find((index) => index.name === indexName);
+
+  if (
+    existing?.partialFilterExpression &&
+    JSON.stringify(existing.partialFilterExpression) !== JSON.stringify(desiredPartial)
+  ) {
+    await products.dropIndex(indexName);
+  }
+
+  await products.createIndex(
+    { supplier_id: 1, supplier_product_id: 1 },
+    { unique: true, partialFilterExpression: desiredPartial }
+  );
 }
 
 export function createId() {

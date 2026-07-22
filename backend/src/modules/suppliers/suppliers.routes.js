@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { getCollection, createId } from "../../db/mongo.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { importSupplierProducts, listSupplierProductImports } from "../products/product-import.service.js";
 import {
   applySupplierOrderUpdate,
   dispatchSupplierOrder,
@@ -18,7 +19,7 @@ import {
 const supplierSchema = z.object({
   company_name: z.string().min(2),
   adapter: z.enum(["universal", "generic", "cj"]).default("universal"),
-  api_url: z.string().min(3),
+  api_url: z.string().optional().default(""),
   auth_mode: z.enum(["bearer", "api-key", "basic", "both", "oauth", "none"]).default("bearer"),
   api_key: z.string().optional().default(""),
   api_secret: z.string().optional().default(""),
@@ -45,6 +46,13 @@ const supplierSchema = z.object({
   supports_orders: z.boolean().default(true),
   supports_stock: z.boolean().default(true),
   supports_prices: z.boolean().default(true)
+});
+
+const importProductsSchema = z.object({
+  fileName: z.string().min(1),
+  contentBase64: z.string().optional().default(""),
+  contentText: z.string().optional().default(""),
+  dryRun: z.boolean().default(true)
 });
 
 export const suppliersRouter = Router();
@@ -159,7 +167,7 @@ suppliersRouter.delete("/:id", async (req, res, next) => {
     } else if (deleteAction === "keep") {
       await products.updateMany(
         { supplier_id: req.params.id },
-        { $set: { supplier_id: null, supplier_product_id: null, auto_sync: false, updated_at: new Date() } }
+        { $set: { supplier_id: null, supplier_product_id: null, product_source: "internal", auto_sync: false, updated_at: new Date() } }
       );
     } else {
       await products.updateMany(
@@ -184,6 +192,36 @@ suppliersRouter.post("/:id/test", async (req, res, next) => {
 suppliersRouter.post("/:id/sync", async (req, res, next) => {
   try {
     res.json({ data: await syncSupplierProducts(req.params.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+suppliersRouter.post("/:id/import-products", async (req, res, next) => {
+  try {
+    const payload = importProductsSchema.parse(req.body || {});
+    res.json({
+      data: await importSupplierProducts({
+        supplierId: req.params.id,
+        fileName: payload.fileName,
+        contentBase64: payload.contentBase64,
+        contentText: payload.contentText,
+        dryRun: payload.dryRun
+      })
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+suppliersRouter.get("/:id/imports", async (req, res, next) => {
+  try {
+    res.json({
+      data: await listSupplierProductImports({
+        supplierId: req.params.id,
+        limit: Number(req.query.limit || 20)
+      })
+    });
   } catch (err) {
     next(err);
   }

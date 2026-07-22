@@ -23,6 +23,9 @@ export default function ProductCard({ product }) {
   const isInCart = Boolean(cart[product.id]);
 
   const badgeText = (() => {
+    if (["Active", "Inactive", "Draft"].includes(product.status)) {
+      return typeof product.stock === "number" && product.stock > 0 ? t("inStock") : t("notAvailableYet");
+    }
     // Avoid showing legacy 'Quote ready' badge — prefer stock-based or existing status
     if (product.status && product.status !== "Quote ready") return translateProductStatus(product.status);
     if (typeof product.stock === "number" && product.stock > 0) return t("inStock");

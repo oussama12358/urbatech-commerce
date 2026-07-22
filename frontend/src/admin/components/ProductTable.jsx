@@ -5,6 +5,24 @@ import { t, useLocale } from "../../i18n.js";
 
 export default function ProductTable({ products, onDelete }) {
   useLocale();
+  const sourceLabel = (source, supplierId) => {
+    const value = source || (supplierId ? "api" : "internal");
+    if (value === "api") return t("sourceApi");
+    if (value === "import") return t("sourceImport");
+    return t("sourceInternal");
+  };
+
+  const supplierStatusLabel = (status) => {
+    if (status === "inactive") return t("inactive");
+    if (status === "discontinued") return t("discontinued");
+    if (status === "out_of_stock") return t("outOfStock");
+    return t("active");
+  };
+
+  const formatLastSync = (timestamp) => {
+    if (!timestamp) return "-";
+    return new Date(timestamp).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  };
 
   if (!products.length) {
     return <div className="empty">{t("noProductsYet")}</div>;
@@ -15,6 +33,10 @@ export default function ProductTable({ products, onDelete }) {
       <thead>
         <tr>
           <th>{t("product")}</th>
+          <th>{t("sku")}</th>
+          <th>{t("source")}</th>
+          <th>{t("supplierStatus")}</th>
+          <th>{t("lastSync")}</th>
           <th>{t("supplierId")}</th>
           <th>{t("categories")}</th>
           <th>{t("price")}</th>
@@ -28,6 +50,10 @@ export default function ProductTable({ products, onDelete }) {
         {products.map((product) => (
           <tr key={product.id}>
             <td>{product.name}</td>
+            <td>{product.sku || "-"}</td>
+            <td>{sourceLabel(product.product_source, product.supplier_id)}</td>
+            <td>{supplierStatusLabel(product.supplier_status)}</td>
+            <td>{formatLastSync(product.supplier_last_sync_at)}</td>
             <td>{product.supplier_product_id || "-"}</td>
             <td>{product.category}</td>
             <td>{money(product.price)}</td>

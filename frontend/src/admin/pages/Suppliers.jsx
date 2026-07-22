@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { Eye, Plug, RefreshCw, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Eye, Plug, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useStore } from "../../store/StoreContext.jsx";
 import { t, useLocale } from "../../i18n.js";
 
@@ -13,7 +13,7 @@ const defaultCapabilities = {
 
 export default function Suppliers() {
   useLocale();
-  const { suppliers, addSupplier, deleteSupplier, testSupplier, syncSupplier } = useStore();
+  const { suppliers, addSupplier, deleteSupplier, testSupplier, syncSupplier, importSupplierProducts, listSupplierProductImports, updateSupplier } = useStore();
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
   const [formPhase, setFormPhase] = useState("idle");
@@ -23,7 +23,43 @@ export default function Suppliers() {
   const [deleteImportedProducts, setDeleteImportedProducts] = useState(false);
   const [authMode, setAuthMode] = useState("bearer");
   const [customHeaders, setCustomHeaders] = useState([]);
+  const [importSupplierId, setImportSupplierId] = useState("");
+  const [importFile, setImportFile] = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
+  const [importHistory, setImportHistory] = useState([]);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState("");
   const formRef = useRef(null);
+
+  useEffect(() => {
+    if (!importSupplierId) {
+      setImportHistory([]);
+      return undefined;
+    }
+    let mounted = true;
+    listSupplierProductImports(importSupplierId)
+      .then((rows) => {
+        if (mounted) setImportHistory(rows);
+      })
+      .catch(() => {
+        if (mounted) setImportHistory([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [importSupplierId]);
+
+  const readFileBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      if (file.size > 18 * 1024 * 1024) {
+        reject(new Error(t("productFileTooLarge")));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+      reader.onerror = () => reject(reader.error || new Error("Unable to read file"));
+      reader.readAsDataURL(file);
+    });
 
   const getFriendlyError = (error) => {
     const message = String(error?.message || error || "").trim();
@@ -49,18 +85,14 @@ export default function Suppliers() {
 
     const form = Object.fromEntries(new FormData(event.currentTarget));
     const apiUrl = String(form.api_url || "").trim();
-    if (!apiUrl) {
-      setError(t("apiUrlRequired"));
-      setFormPhase("idle");
-      return;
-    }
-
-    try {
-      new URL(apiUrl);
-    } catch {
-      setError(t("invalidApiUrlExample"));
-      setFormPhase("idle");
-      return;
+    if (apiUrl) {
+      try {
+        new URL(apiUrl);
+      } catch {
+        setError(t("invalidApiUrlExample"));
+        setFormPhase("idle");
+        return;
+      }
     }
 
     const payload = {
@@ -89,16 +121,22 @@ export default function Suppliers() {
 
     try {
       const supplier = await addSupplier(payload);
-      setFormPhase("testing");
-      try {
-        await testSupplier(supplier.id);
+      if (apiUrl) {
+        setFormPhase("testing");
+        try {
+          await testSupplier(supplier.id);
+          setFormPhase("success");
+          event.currentTarget.reset();
+          setTimeout(() => setFormPhase("idle"), 3000);
+        } catch (testError) {
+          setPendingSupplier(supplier);
+          setFormPhase("failed");
+          setError(getFriendlyError(testError));
+        }
+      } else {
         setFormPhase("success");
         event.currentTarget.reset();
         setTimeout(() => setFormPhase("idle"), 3000);
-      } catch (testError) {
-        setPendingSupplier(supplier);
-        setFormPhase("failed");
-        setError(getFriendlyError(testError));
       }
     } catch (err) {
       setError(getFriendlyError(err) || t("unableToAddSupplier"));
@@ -136,9 +174,11 @@ export default function Suppliers() {
     setFormPhase("idle");
     try {
       setBusyId(id);
-      await action(id);
+      const result = await action(id);
+      return result;
     } catch (err) {
       setError(err.message || t("supplierActionFailed"));
+      throw err;
     } finally {
       setBusyId("");
     }
@@ -211,8 +251,59 @@ export default function Suppliers() {
     return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
   };
 
+  const formatDuration = (milliseconds) => {
+    if (!milliseconds) return "-";
+    if (milliseconds < 1000) return `${milliseconds}ms`;
+    return `${(milliseconds / 1000).toFixed(1)}s`;
+  };
+
   const scrollToForm = () => {
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const previewImport = async () => {
+    if (!importSupplierId || !importFile) {
+      setImportError(t("selectSupplierAndFile"));
+      return;
+    }
+    setImportBusy(true);
+    setImportError("");
+    setImportPreview(null);
+    try {
+      const contentBase64 = await readFileBase64(importFile);
+      const preview = await importSupplierProducts(importSupplierId, {
+        fileName: importFile.name,
+        contentBase64,
+        dryRun: true
+      });
+      setImportPreview(preview);
+    } catch (err) {
+      setImportError(err.message || t("unableToPreviewImport"));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const commitImport = async () => {
+    if (!importSupplierId || !importFile) return;
+    setImportBusy(true);
+    setImportError("");
+    try {
+      const contentBase64 = await readFileBase64(importFile);
+      const result = await importSupplierProducts(importSupplierId, {
+        fileName: importFile.name,
+        contentBase64,
+        dryRun: false
+      });
+      setImportPreview(result);
+      setImportFile(null);
+      const history = await listSupplierProductImports(importSupplierId).catch(() => []);
+      setImportHistory(history);
+    } catch (err) {
+      setImportError(err.message || t("unableToImportProducts"));
+    } finally {
+      setImportBusy(false);
+    }
   };
 
   return (
@@ -247,7 +338,7 @@ export default function Suppliers() {
             </label>
             <label className="field-group">
               <span>{t("apiUrl")}</span>
-              <input className="input" name="api_url" placeholder={t("apiUrlPlaceholder")} required />
+              <input className="input" name="api_url" placeholder={t("apiUrlPlaceholder")} />
             </label>
           </div>
 
@@ -414,6 +505,145 @@ export default function Suppliers() {
         </form>
       </section>
 
+      <section className="panel form-grid supplier-panel" style={{ marginBottom: 18 }}>
+        <div className="admin-section-head">
+          <div>
+            <h2>{t("importSupplierProducts")}</h2>
+            <span>{t("importSupplierProductsLead")}</span>
+          </div>
+        </div>
+        {importError && <div className="error-message">{importError}</div>}
+        <div className="form-grid three">
+          <label className="field-group">
+            <span>{t("supplier")}</span>
+            <select
+              className="select"
+              value={importSupplierId}
+              onChange={(event) => {
+                setImportSupplierId(event.target.value);
+                setImportPreview(null);
+                setImportError("");
+              }}
+            >
+              <option value="">{t("selectSupplier")}</option>
+              {suppliers.map((supplier) => (
+                <option key={supplier.id} value={supplier.id}>{supplier.company_name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field-group">
+            <span>{t("productFile")}</span>
+            <input
+              className="input"
+              type="file"
+              accept=".xlsx,.csv"
+              onChange={(event) => {
+                setImportFile(event.target.files?.[0] || null);
+                setImportPreview(null);
+                setImportError("");
+              }}
+            />
+          </label>
+          <div className="button-row" style={{ alignItems: "end" }}>
+            <button className="secondary-btn" type="button" disabled={importBusy} onClick={previewImport}>
+              <Upload />
+              {importBusy ? t("processing") : t("previewImport")}
+            </button>
+          </div>
+        </div>
+        {importPreview && (
+          <div className="import-preview">
+            <div className="stat-grid">
+              <div className="stat-card"><strong>{importPreview.total_rows}</strong><span>{t("rowsFound")}</span></div>
+              <div className="stat-card"><strong>{importPreview.valid_count}</strong><span>{t("validProducts")}</span></div>
+              <div className="stat-card"><strong>{importPreview.error_count}</strong><span>{t("importErrors")}</span></div>
+            </div>
+            {importPreview.sample?.length > 0 && (
+              <div className="table-responsive">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>{t("product")}</th>
+                      <th>{t("supplierSku")}</th>
+                      <th>{t("category")}</th>
+                      <th>{t("price")}</th>
+                      <th>{t("cost")}</th>
+                      <th>{t("stock")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.sample.map((product, index) => (
+                      <tr key={`${product.supplier_product_id || product.name}-${index}`}>
+                        <td>{product.name}</td>
+                        <td>{product.supplier_product_id || "-"}</td>
+                        <td>{product.category || "-"}</td>
+                        <td>{product.price}</td>
+                        <td>{product.cost_price}</td>
+                        <td>{product.stock}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {importPreview.errors?.length > 0 && (
+              <div className="error-message">
+                {importPreview.errors.slice(0, 5).map((item) => (
+                  <div key={item.row}>{t("row")} {item.row}: {item.errors.join(" ")}</div>
+                ))}
+              </div>
+            )}
+            {!importPreview.dry_run && (
+              <div className="form-status-success">
+                {t("importCompleted")}: {importPreview.imported_count || 0} {t("imported")}, {importPreview.created_count || 0} {t("created")}, {importPreview.updated_count || 0} {t("updated")}, {importPreview.skipped_count || 0} {t("skipped")}
+                {importPreview.duplicate_candidates_count ? `, ${importPreview.duplicate_candidates_count} ${t("duplicateCandidates")}` : ""}
+              </div>
+            )}
+            {importPreview.dry_run && (
+              <button className="primary-btn" type="button" disabled={importBusy || !importPreview.valid_count} onClick={commitImport}>
+                {importBusy ? t("processing") : t("importProducts")}
+              </button>
+            )}
+          </div>
+        )}
+        {importHistory.length > 0 && (
+          <div className="table-responsive">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>{t("file")}</th>
+                  <th>{t("rowsFound")}</th>
+                  <th>{t("validProducts")}</th>
+                  <th>{t("importErrors")}</th>
+                  <th>{t("imported")}</th>
+                  <th>{t("created")}</th>
+                  <th>{t("updated")}</th>
+                  <th>{t("skipped")}</th>
+                  <th>{t("duplicates")}</th>
+                  <th>{t("duration")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {importHistory.map((batch) => (
+                  <tr key={batch.id}>
+                    <td>{batch.file_name}</td>
+                    <td>{batch.total_rows}</td>
+                    <td>{batch.valid_count}</td>
+                    <td>{batch.error_count}</td>
+                    <td>{batch.imported_count || 0}</td>
+                    <td>{batch.created_count || 0}</td>
+                    <td>{batch.updated_count || 0}</td>
+                    <td>{batch.skipped_count || 0}</td>
+                    <td>{batch.duplicate_candidates_count || 0}</td>
+                    <td>{formatDuration(batch.duration_ms)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       <section className="panel">
         <div className="admin-section-head">
           <h2>{t("connectedSuppliersTitle")}</h2>
@@ -445,7 +675,7 @@ export default function Suppliers() {
                           className="icon-btn"
                           type="button"
                           title={t("connectTestApi")}
-                          disabled={busyId === supplier.id}
+                          disabled={busyId === supplier.id || !supplier.api_url}
                           onClick={() => runAction(supplier.id, testSupplier)}
                         >
                           <Plug />
@@ -454,7 +684,7 @@ export default function Suppliers() {
                           className="icon-btn"
                           type="button"
                           title={t("syncProducts")}
-                          disabled={busyId === supplier.id}
+                          disabled={busyId === supplier.id || !supplier.api_url}
                           onClick={() => runAction(supplier.id, syncSupplier)}
                         >
                           <RefreshCw />
@@ -504,7 +734,7 @@ export default function Suppliers() {
             onMouseDown={(event) => event.stopPropagation()}
           >
             <h2 id="supplier-details-title">{detailsSupplier.company_name}</h2>
-            <div className="supplier-details-grid">
+              <div className="supplier-details-grid">
               <div>
                 <strong>{t("apiUrl")}</strong>
                 <p>{detailsSupplier.api_url}</p>
@@ -528,6 +758,51 @@ export default function Suppliers() {
               <div>
                 <strong>{t("lastSync")}</strong>
                 <p>{formatLastSync(detailsSupplier.last_sync_at)}</p>
+              </div>
+              
+              <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
+                <strong>{t('suppliersIntegration')}</strong>
+                <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                  {[
+                    ['supports_products', t('products')],
+                    ['supports_stock', t('stock')],
+                    ['supports_prices', t('price')],
+                    ['supports_orders', t('orders')],
+                    ['supports_tracking', t('tracking')]
+                  ].map(([key, label]) => (
+                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(detailsSupplier[key])}
+                        onChange={async (e) => {
+                          const checked = e.target.checked;
+                          const supplierId = detailsSupplier.id;
+                          const supplierApiUrl = detailsSupplier.api_url;
+                          // optimistic UI update so clicks feel responsive
+                          setDetailsSupplier((prev) => ({ ...prev, [key]: checked }));
+                          // debug log to help trace UI events
+                          // eslint-disable-next-line no-console
+                          console.log('[Suppliers] checkbox change', { supplierId, key, checked });
+                          try {
+                            const updated = await runAction(supplierId, (id) => updateSupplier(id, { [key]: checked }));
+                            // eslint-disable-next-line no-console
+                            console.log('[Suppliers] updateSupplier result', updated);
+                            if (updated) setDetailsSupplier(updated);
+                            // If enabling a capability and supplier has api_url, trigger sync
+                            if (checked && (updated?.api_url || supplierApiUrl)) {
+                              // fire-and-forget sync, but show busy state
+                              runAction(supplierId, syncSupplier).catch(() => {});
+                            }
+                          } catch (err) {
+                            // revert optimistic update on failure
+                            setDetailsSupplier((prev) => ({ ...prev, [key]: !checked }));
+                          }
+                        }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div>
                 <strong>{t("webhook")}</strong>

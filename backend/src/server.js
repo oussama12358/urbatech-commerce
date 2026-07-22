@@ -40,7 +40,7 @@ app.use((req, res, next) => {
 });
 app.use(cors({ origin: env.clientOrigin, credentials: true }));
 app.use(express.json({
-  limit: "1mb",
+  limit: "25mb",
   verify: (req, _res, buf) => {
     if (req.originalUrl === "/api/checkout/webhook" || req.originalUrl === "/api/checkout/paypal/webhook") {
       req.rawBody = buf;

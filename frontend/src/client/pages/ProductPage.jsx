@@ -23,6 +23,9 @@ export default function ProductPage() {
   const { products, addToCart, cart } = useStore();
   const product = products.find((item) => item.id === id);
   const isInCart = Boolean(product && cart[product.id]);
+  const availability = ["Active", "Inactive", "Draft"].includes(product?.status)
+    ? (product?.stock > 0 ? t("inStock") : t("notAvailableYet"))
+    : translateProductStatus(product?.status);
 
   if (!product) {
     return (
@@ -37,7 +40,7 @@ export default function ProductPage() {
       <section className="detail-grid">
         <div className="detail-media">
           <ProductArt product={product} />
-          <span className="badge">{product.status}</span>
+          <span className="badge">{availability}</span>
         </div>
         <section className="panel">
           <div className="category">{product.category}</div>
@@ -45,13 +48,14 @@ export default function ProductPage() {
           <p className="lead">{product.desc}</p>
           <div className="kv">
             <div className="kv-row"><span>{t("price")}</span><strong>{money(product.price)}</strong></div>
-            <div className="kv-row"><span>{t("availability")}</span><strong>{product.status} - {product.stock} {t("units")}</strong></div>
+            <div className="kv-row"><span>{t("availability")}</span><strong>{availability} - {product.stock} {t("units")}</strong></div>
             <div className="kv-row"><span>{t("leadTime")}</span><strong>{product.lead}</strong></div>
             <div className="kv-row"><span>{t("warranty")}</span><strong>{product.warranty}</strong></div>
           </div>
           <div className="specs">
             {product.specs.map((spec) => <span className="spec" key={spec}>{spec}</span>)}
           </div>
+          {product.long_description && <p className="page-copy">{product.long_description}</p>}
           <div className="card-actions" style={{ marginTop: 18 }}>
             <button className="primary-btn" disabled={isInCart} onClick={() => {
               addToCart(product.id);

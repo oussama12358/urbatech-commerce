@@ -59,6 +59,7 @@ const defaultEndpoints = {
 
 const defaultProductMapping = {
   list: "data|products|items",
+  sku: "sku|reference|ref",
   supplier_product_id: "supplier_product_id|id|sku|product_id",
   name: "name|title",
   description: "description|desc",
@@ -66,6 +67,10 @@ const defaultProductMapping = {
   cost_price: "cost_price|costPrice|cost|wholesale_price",
   stock: "stock|quantity|inventory",
   status: "status",
+  brand: "brand|manufacturer|maker",
+  manufacturer: "manufacturer|maker|brand",
+  mpn: "mpn|manufacturer_part_number|part_number|model",
+  barcode: "barcode|ean|upc|gtin",
   category: "category|category_name",
   specs: "specs|attributes",
   images: "images|image_urls"
@@ -165,12 +170,17 @@ export class SupplierAdapter {
     const images = firstValue(product, this.productMapping.images, []);
     return {
       supplier_product_id: String(firstValue(product, this.productMapping.supplier_product_id, "")),
+      sku: String(firstValue(product, this.productMapping.sku, firstValue(product, this.productMapping.supplier_product_id, "")) || ""),
       name: firstValue(product, this.productMapping.name, "Supplier product"),
       description: firstValue(product, this.productMapping.description, ""),
       price,
       cost_price: cost,
       stock,
       status: firstValue(product, this.productMapping.status, stock > 0 ? "In stock" : "Out of stock"),
+      brand: firstValue(product, this.productMapping.brand, ""),
+      manufacturer: firstValue(product, this.productMapping.manufacturer, ""),
+      mpn: String(firstValue(product, this.productMapping.mpn, "") || ""),
+      barcode: String(firstValue(product, this.productMapping.barcode, "") || ""),
       category: firstValue(product, this.productMapping.category, null),
       specs: Array.isArray(specs) ? specs : [],
       images: Array.isArray(images) ? images : []
