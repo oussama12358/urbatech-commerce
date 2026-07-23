@@ -120,16 +120,149 @@ adminRouter.post("/settlements/:id/pay", async (req, res, next) => {
   }
 });
 
-adminRouter.get("/customers", async (_req, res, next) => {
+adminRouter.get("/customers", async (req, res, next) => {
   try {
+    const search = String(req.query.search || "").trim();
     const customers = await getCollection("customers");
-    const rows = await customers
-      .find()
-      .project({ _id: 0, id: 1, name: 1, email: 1, phone: 1, created_at: 1 })
-      .sort({ created_at: -1, email: 1 })
-      .limit(500)
-      .toArray();
+
+    let match = { role: { $nin: ["admin", "Admin"] } };
+    if (search) {
+      const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      match = {
+        $and: [
+          { role: { $nin: ["admin", "Admin"] } },
+          {
+            $or: [
+              { name: regex },
+              { email: regex },
+              { phone: regex }
+            ]
+          }
+        ]
+      };
+    }
+
+    const pipeline = [
+      { $match: match },
+      {
+        $lookup: {
+          from: "orders",
+          let: { customerId: "$id" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$customer_id", "$$customerId"] } } },
+            { $project: { total: 1, created_at: 1 } }
+          ],
+          as: "orders"
+        }
+      },
+      {
+        $set: {
+          orders_count: { $size: "$orders" },
+          total_spent: { $sum: "$orders.total" },
+          last_order_at: { $max: "$orders.created_at" }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          id: 1,
+          name: 1,
+          email: 1,
+          phone: 1,
+          status: 1,
+          created_at: 1,
+          orders_count: 1,
+          total_spent: 1,
+          last_order_at: 1
+        }
+      }
+    ];
+
+    pipeline.push({ $sort: { created_at: -1, email: 1 } });
+
+    const rows = await customers.aggregate(pipeline).toArray();
     res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.get("/customers/:id", async (req, res, next) => {
+  try {
+    const customerId = req.params.id;
+    const customers = await getCollection("customers");
+    const customer = await customers.findOne({ id: customerId }, { projection: { _id: 0 } });
+    if (!customer) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    const orders = await getCollection("orders");
+    const orderRows = await orders
+      .find({ customer_id: customerId })
+      .sort({ created_at: -1 })
+      .project({ _id: 0, id: 1, status: 1, payment_status: 1, total: 1, created_at: 1, billing: 1 })
+      .toArray();
+
+    const totalSpent = orderRows.reduce((sum, order) => sum + Number(order.total || 0), 0);
+    const lastOrderAt = orderRows[0]?.created_at || null;
+    const distinctAddresses = [...new Set(orderRows.map((order) => order.billing?.address).filter(Boolean))];
+
+    res.json({
+      data: {
+        ...customer,
+        orders_count: orderRows.length,
+        total_spent: totalSpent,
+        last_order_at: lastOrderAt,
+        orders: orderRows,
+        addresses: distinctAddresses
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.delete("/customers/:id", async (req, res, next) => {
+  try {
+    const customerId = req.params.id;
+    const customers = await getCollection("customers");
+    const result = await customers.deleteOne({ id: customerId });
+    if (!result.deletedCount) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+    res.json({ data: { id: customerId } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post("/customers/:id/deactivate", async (req, res, next) => {
+  try {
+    const customerId = req.params.id;
+    const customers = await getCollection("customers");
+    const result = await customers.updateOne({ id: customerId }, { $set: { status: "deactivated" } });
+    if (!result.matchedCount) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+    res.json({ data: { id: customerId, status: "deactivated" } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post("/customers/:id/reactivate", async (req, res, next) => {
+  try {
+    const customerId = req.params.id;
+    const customers = await getCollection("customers");
+    const result = await customers.updateOne({ id: customerId }, { $set: { status: "active" } });
+    if (!result.matchedCount) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+    res.json({ data: { id: customerId, status: "active" } });
   } catch (err) {
     next(err);
   }

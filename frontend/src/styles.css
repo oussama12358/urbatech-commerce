@@ -334,7 +334,39 @@ button:not(:disabled):active,
 .avatar-caret { font-size: 10px; opacity: .8; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .compact-btn { min-height: 36px; padding: 0 12px; }
+.action-cell { position: relative; overflow: visible; }
+.action-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 10px;
+  min-width: 180px;
+  background: #202d40;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .24);
+  z-index: 50;
+}
+.action-menu-item {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
 .status-pill { display: inline-flex; align-items: center; min-height: 34px; padding: 0 10px; border-radius: 8px; color: #c4cfdd; background: #111b2c; border: 1px solid rgba(255,255,255,.1); font-size: 13px; font-weight: 600; }
+.success-message {
+  padding: 10px 12px;
+  border: 1px solid rgba(74, 222, 128, .35);
+  border-radius: 8px;
+  color: #baf7c8;
+  background: rgba(34, 197, 94, .12);
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.success-message.visible { opacity: 1; transform: translateY(0); }
+.success-message.hidden { opacity: 0; transform: translateY(-4px); }
 .error-message { padding: 10px 12px; border: 1px solid rgba(255,117,117,.3); border-radius: 8px; color: #ffb3b3; background: rgba(255,117,117,.1); font-size: 14px; }
 .segmented-control { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; background: #111b2c; }
 .segmented-control button { min-height: 36px; padding: 0 12px; border-radius: 6px; color: #c4cfdd; font-weight: 600; }
@@ -647,10 +679,38 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
 .kv-row .badge.badge-muted { background: rgba(255,255,255,.06); color: #9ca3af; }
 .kv-row .badge svg { width: 14px; height: 14px; flex-shrink: 0; }
 .badge-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 8px; }
+.table { width: 100%; border-collapse: collapse; border-radius: 8px; }
 .table th, .table td { padding: 13px 12px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: top; }
 .table th { color: #ffb400; font-size: 13px; text-transform: uppercase; background: #263448; }
 .table td { color: #c4cfdd; }
+.customer-name-cell {
+  max-width: 240px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.customer-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+  border: 1px solid rgba(255,255,255,.1);
+}
+.customer-status-pill.active {
+  color: #052e16;
+  background: #86efac;
+}
+.customer-status-pill.archived {
+  color: #fef2f2;
+  background: #7f1d1d;
+}
+.customer-status-pill.deactivated {
+  color: #0f172a;
+  background: #fcd34d;
+}
 .cart-line { display: grid; grid-template-columns: 70px 1fr auto auto; gap: 14px; align-items: center; padding: 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
 .mini { display: grid; place-items: center; width: 70px; height: 70px; border-radius: 8px; background: #111b2c; color: #ffb400; font-weight: 700; }
 .qty { display: grid; grid-template-columns: 32px 34px 32px; height: 34px; overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; }

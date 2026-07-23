@@ -14,6 +14,7 @@ import Settlements from "../pages/Settlements.jsx";
 import Settings from "../pages/Settings.jsx";
 import PaymentProviders from "../pages/PaymentProviders.jsx";
 import Suppliers from "../pages/Suppliers.jsx";
+import CustomerDetails from "../pages/CustomerDetails.jsx";
 
 export default function AdminRoutes() {
   return (
@@ -33,6 +34,7 @@ export default function AdminRoutes() {
       <Route path="orders" element={<Orders />} />
       <Route path="orders/:id" element={<OrderDetails />} />
       <Route path="customers" element={<Customers />} />
+      <Route path="customers/:id" element={<CustomerDetails />} />
       <Route path="categories" element={<Categories />} />
       <Route path="suppliers" element={<Suppliers />} />
       <Route path="payments" element={<PaymentProviders />} />

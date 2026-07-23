@@ -194,6 +194,7 @@ ordersRouter.get("/:id", requireAuth, async (req, res, next) => {
 ordersRouter.post("/", requireAuth, async (req, res, next) => {
   try {
     const payload = orderSchema.parse(req.body);
+    const billing = payload.billing || {};
     const trusted = await buildTrustedOrderItems(payload.items);
     const subtotal = trusted.subtotal;
     const service = roundMoney(subtotal * 0.03);
@@ -230,7 +231,7 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
         platform_commission: platformCommission,
         stock_reserved: true,
         stock_reserved_at: new Date(),
-        billing: payload.billing || {},
+        billing,
         created_at: new Date()
       });
 
@@ -244,6 +245,21 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
         .find({ order_id: id })
         .project(itemProjection(false))
         .toArray();
+
+      const customers = await getCollection("customers");
+      const customerUpdateFields = {};
+      if (billing?.phone) customerUpdateFields.phone = billing.phone;
+      if (billing?.address) customerUpdateFields.address = billing.address;
+      if (billing?.city) customerUpdateFields.city = billing.city;
+      if (billing?.country) customerUpdateFields.country = billing.country;
+      if (billing?.postalCode) customerUpdateFields.postalCode = billing.postalCode;
+      if (billing?.phone || billing?.address) {
+        await customers.updateOne(
+          { id: customerId },
+          { $set: customerUpdateFields }
+        );
+      }
+
       notifyCustomerOrderConfirmed(id).catch((err) => console.error("[notification:order-confirmed]", err.message));
       res.status(201).json({
         data: serializeOrder(createdOrder, itemsRaw, { includeInternal: false })

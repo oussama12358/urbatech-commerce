@@ -37,7 +37,7 @@ export async function optionalAuth(req, _res, next) {
   const customers = await getCollection("customers");
   const user = await customers.findOne(
     { id: tokenUser.id },
-    { projection: { _id: 0, id: 1, name: 1, email: 1, role: 1 } }
+    { projection: { _id: 0, id: 1, name: 1, email: 1, role: 1, status: 1 } }
   );
 
   if (user) {
@@ -65,7 +65,7 @@ export async function requireAuth(req, res, next) {
   const customers = await getCollection("customers");
   const user = await customers.findOne(
     { id: tokenUser.id },
-    { projection: { _id: 0, id: 1, name: 1, email: 1, role: 1 } }
+    { projection: { _id: 0, id: 1, name: 1, email: 1, role: 1, status: 1 } }
   );
 
   if (!user) {
