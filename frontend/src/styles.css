@@ -680,9 +680,10 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
 .kv-row .badge svg { width: 14px; height: 14px; flex-shrink: 0; }
 .badge-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .table { width: 100%; border-collapse: collapse; border-radius: 8px; }
-.table th, .table td { padding: 13px 12px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: top; }
-.table th { color: #ffb400; font-size: 13px; text-transform: uppercase; background: #263448; }
-.table td { color: #c4cfdd; }
+.table-responsive { max-width: 100%; overflow: auto; border-radius: 8px; }
+.table thead th { padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: middle; color: #ffb400; font-size: 13px; text-transform: uppercase; background: #263448; }
+.table tbody td { padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: middle; color: #c4cfdd; }
+.table tbody tr:hover { background: rgba(255,255,255,.02); }
 .customer-name-cell {
   max-width: 240px;
   overflow-wrap: anywhere;

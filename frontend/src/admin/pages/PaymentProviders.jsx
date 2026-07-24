@@ -50,7 +50,6 @@ export default function PaymentProviders() {
             <thead>
               <tr>
                 <th>{t("displayName")}</th>
-                <th>{t("providerKey")}</th>
                 <th>{t("description")}</th>
                 <th>{t("status")}</th>
                 <th>{t("actions")}</th>
@@ -59,8 +58,9 @@ export default function PaymentProviders() {
             <tbody>
               {paymentProviders.map((provider) => (
                 <tr key={provider.id}>
-                  <td>{provider.name}</td>
-                  <td>{provider.provider_key}</td>
+                  <td title={provider.provider_key} aria-label={`${provider.name} (${provider.provider_key})`}>
+                    <div>{provider.name}</div>
+                  </td>
                   <td>{getProviderDescription(provider.provider_key)}</td>
                   <td>{provider.enabled ? t("enabled") : t("disabled")}</td>
                   <td>
