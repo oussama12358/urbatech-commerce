@@ -1,14 +1,66 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Hero from "../components/Hero.jsx";
 import SummaryBox from "../components/SummaryBox.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
 import { money } from "../../shared/lib/format.js";
 import { t, useLocale } from "../../i18n.js";
+import { getCountryByCode } from "../../shared/lib/countries.js";
+import {
+  getProductShipsTo,
+  isProductAvailableInCountry,
+  readStoredShippingCountryCode,
+  subscribeShippingCountry
+} from "../../shared/lib/shipping.js";
 
 export default function CartPage() {
   useLocale();
-  const { cartLines, changeQty, totals } = useStore();
-  const canCheckout = cartLines.length > 0;
+  const { cartLines, changeQty, totals, user, updateProfile } = useStore();
+  const [shipCountryCode, setShipCountryCode] = useState(() => {
+    return user?.country_code || readStoredShippingCountryCode();
+  });
+
+  useEffect(() => {
+    // If an authenticated user exists, prefer their profile country and do not subscribe to guest updates.
+    if (user) {
+      setShipCountryCode(user.country_code || "");
+      return () => {};
+    }
+    return subscribeShippingCountry(setShipCountryCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.token || !shipCountryCode || user.country_code === shipCountryCode) {
+      return;
+    }
+
+    const syncProfileCountry = async () => {
+      const country = getCountryByCode(shipCountryCode);
+      try {
+        await updateProfile({ country_code: shipCountryCode, country: country?.name || "" });
+      } catch (error) {
+        console.warn("Unable to sync cart country to profile", error);
+      }
+    };
+
+    syncProfileCountry();
+  }, [shipCountryCode, user?.token, user?.country_code, updateProfile]);
+
+  const shipCountry = shipCountryCode ? getCountryByCode(shipCountryCode) : null;
+  const unavailableLines = shipCountry
+    ? cartLines.filter((line) => isProductAvailableInCountry(line, shipCountry).available === false)
+    : [];
+  const restrictedLinesWithoutCountry = !shipCountry
+    ? cartLines.filter((line) => getProductShipsTo(line))
+    : [];
+  const outOfStockLines = cartLines.filter((line) => typeof line.stock === "number" && line.stock <= 0);
+  const hasItems = cartLines.length > 0;
+  const canCheckout =
+    hasItems &&
+    unavailableLines.length === 0 &&
+    outOfStockLines.length === 0 &&
+    restrictedLinesWithoutCountry.length === 0;
 
   return (
     <main className="main">
@@ -16,14 +68,33 @@ export default function CartPage() {
       <section className="two-col">
         <div className="panel">
           <h2>{t("cartItems")}</h2>
-          {cartLines.length ? cartLines.map((line) => (
-            <div className="cart-line" key={line.id}>
-              <div className="mini">{line.category.slice(0, 2).toUpperCase()}</div>
-              <div><strong>{line.name}</strong><p className="desc">{money(line.price)} - {line.status}</p></div>
-              <div className="qty"><button onClick={() => changeQty(line.id, -1)}>-</button><span>{line.qty}</span><button onClick={() => changeQty(line.id, 1)}>+</button></div>
-              <strong>{money(line.price * line.qty)}</strong>
+          {unavailableLines.length > 0 ? (
+            <div className="country-unavailable-banner" role="alert" style={{ marginBottom: 12 }}>
+              {t("notAvailableInYourCountryBanner").replace("{country}", shipCountry?.name || "")}
             </div>
-          )) : <div className="empty">{t("cartEmpty")}</div>}
+          ) : restrictedLinesWithoutCountry.length > 0 ? (
+            <div className="country-unavailable-banner" role="alert" style={{ marginBottom: 12 }}>
+              {t("selectValidCountry")}
+            </div>
+          ) : null}
+          {cartLines.length ? cartLines.map((line) => {
+            const unavailable = shipCountry && isProductAvailableInCountry(line, shipCountry).available === false;
+            const outOfStock = typeof line.stock === "number" && line.stock <= 0;
+            return (
+              <div className={`cart-line ${unavailable || outOfStock ? "cart-line-unavailable" : ""}`} key={line.id}>
+                <div className="mini">{line.category.slice(0, 2).toUpperCase()}</div>
+                <div>
+                  <strong>{line.name}</strong>
+                  <p className="desc">
+                    {money(line.price)} - {line.status}
+                    {outOfStock ? ` · ${t("outOfStock")}` : unavailable ? ` · ${t("notAvailableInYourCountry")}` : ""}
+                  </p>
+                </div>
+                <div className="qty"><button onClick={() => changeQty(line.id, -1)}>-</button><span>{line.qty}</span><button onClick={() => changeQty(line.id, 1)}>+</button></div>
+                <strong>{money(line.price * line.qty)}</strong>
+              </div>
+            );
+          }) : <div className="empty">{t("cartEmpty")}</div>}
         </div>
         <aside className="panel">
           <h2>{t("orderSummary")}</h2>
@@ -34,7 +105,11 @@ export default function CartPage() {
             ) : (
               <>
                 <button className="primary-btn" type="button" disabled>{t("checkout")}</button>
-                <p style={{ marginTop: 8, color: "#c7cdd4", fontSize: 14 }}>{t("addItemsToCartBeforeCheckout")}</p>
+                <p style={{ marginTop: 8, color: "#c7cdd4", fontSize: 14 }}>
+                  {!hasItems
+                    ? t("addItemsToCartBeforeCheckout")
+                    : t("notAvailableInYourCountryBanner").replace("{country}", shipCountry?.name || "")}
+                </p>
               </>
             )}
           </div>

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { getCollection, createId } from "../../db/mongo.js";
 import { requireAuth, requireRole, optionalAuth } from "../../middleware/auth.js";
+import { normalizeCountryCodes, resolveShipsToCountries } from "../../utils/shipping-countries.js";
 
 const createProductSchema = z.object({
   name: z.string().min(2),
@@ -36,6 +37,7 @@ const createProductSchema = z.object({
   visibility: z.enum(["visible", "hidden", "draft"]).optional(),
   featured: z.boolean().optional(),
   shipping_class: z.string().optional(),
+  ships_to_countries: z.array(z.string()).optional(),
   seo_title: z.string().optional(),
   seo_description: z.string().optional(),
   slug: z.string().optional(),
@@ -111,7 +113,8 @@ async function ensureCategoryId(name) {
   return category.id;
 }
 
-function serializeProduct(product, categoryName = null, includeInternal = false) {
+function serializeProduct(product, categoryName = null, includeInternal = false, supplier = null) {
+  const shipsTo = resolveShipsToCountries(product, supplier);
   const serialized = {
     id: product.id,
     name: product.name,
@@ -133,7 +136,10 @@ function serializeProduct(product, categoryName = null, includeInternal = false)
     featured: Boolean(product.featured),
     shipping_class: product.shipping_class || "standard",
     weight_kg: product.weight_kg || 0,
-    dimensions: product.dimensions || null
+    dimensions: product.dimensions || null,
+    // Empty/null ships_to_countries + ships_worldwide=true means available everywhere
+    ships_to_countries: shipsTo || [],
+    ships_worldwide: !shipsTo || shipsTo.length === 0
   };
 
   if (includeInternal) {
@@ -156,12 +162,24 @@ function serializeProduct(product, categoryName = null, includeInternal = false)
     serialized.visibility = product.visibility || "visible";
     serialized.featured = Boolean(product.featured);
     serialized.shipping_class = product.shipping_class || "standard";
+    serialized.ships_to_override = Boolean(product.ships_to_override);
     serialized.seo_title = product.seo_title || "";
     serialized.seo_description = product.seo_description || "";
     serialized.slug = product.slug || product.id;
   }
 
   return serialized;
+}
+
+async function loadSupplierMap(supplierIds = []) {
+  const ids = [...new Set(supplierIds.filter(Boolean))];
+  if (!ids.length) return {};
+  const suppliers = await getCollection("suppliers");
+  const docs = await suppliers.find({ id: { $in: ids } }).toArray();
+  return docs.reduce((map, supplier) => {
+    map[supplier.id] = supplier;
+    return map;
+  }, {});
 }
 
 async function getProductById(id, includeInternal = false) {
@@ -171,7 +189,8 @@ async function getProductById(id, includeInternal = false) {
   if (!product) return null;
 
   const category = product.category_id ? await categories.findOne({ id: product.category_id }) : null;
-  return serializeProduct(product, category?.name || null, includeInternal);
+  const supplierMap = await loadSupplierMap([product.supplier_id]);
+  return serializeProduct(product, category?.name || null, includeInternal, supplierMap[product.supplier_id] || null);
 }
 
 productsRouter.get("/", async (req, res, next) => {
@@ -194,8 +213,17 @@ productsRouter.get("/", async (req, res, next) => {
       });
     }
 
+    const supplierMap = await loadSupplierMap(rows.map((product) => product.supplier_id));
+
     res.json({
-      data: rows.map((product) => serializeProduct(product, categoryMap[product.category_id] || null, includeInternal))
+      data: rows.map((product) =>
+        serializeProduct(
+          product,
+          categoryMap[product.category_id] || null,
+          includeInternal,
+          supplierMap[product.supplier_id] || null
+        )
+      )
     });
   } catch (err) {
     next(err);
@@ -259,6 +287,8 @@ productsRouter.post("/", requireAuth, requireRole("admin"), async (req, res, nex
       visibility: payload.visibility || "visible",
       featured: Boolean(payload.featured),
       shipping_class: payload.shipping_class || "standard",
+      ships_to_countries: normalizeCountryCodes(payload.ships_to_countries),
+      ships_to_override: normalizeCountryCodes(payload.ships_to_countries).length > 0,
       seo_title: payload.seo_title || payload.name,
       seo_description: payload.seo_description || description || "",
       slug,
@@ -332,6 +362,12 @@ productsRouter.put("/:id", requireAuth, requireRole("admin"), async (req, res, n
       ...(payload.visibility !== undefined ? { visibility: payload.visibility } : {}),
       ...(payload.featured !== undefined ? { featured: Boolean(payload.featured) } : {}),
       ...(payload.shipping_class !== undefined ? { shipping_class: payload.shipping_class || "standard" } : {}),
+      ...(payload.ships_to_countries !== undefined
+        ? {
+            ships_to_countries: normalizeCountryCodes(payload.ships_to_countries),
+            ships_to_override: normalizeCountryCodes(payload.ships_to_countries).length > 0
+          }
+        : {}),
       ...(payload.seo_title !== undefined ? { seo_title: payload.seo_title || "" } : {}),
       ...(payload.seo_description !== undefined ? { seo_description: payload.seo_description || "" } : {}),
       ...(payload.slug !== undefined ? { slug: slugify(payload.slug) || req.params.id } : {}),

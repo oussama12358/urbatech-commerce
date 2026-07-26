@@ -1,3 +1,5 @@
+import { t } from "../../i18n.js";
+
 let csrfToken = null;
 
 // Read CSRF token from cookie set by backend (csurf middleware)
@@ -26,6 +28,19 @@ async function getCsrfToken() {
     csrfToken = "disabled";
     return "";
   }
+}
+
+// Translate error message from errorKey if available
+function translateError(error) {
+  if (error && error.errorKey) {
+    let translated = t(error.errorKey);
+    const params = error.errorParams || {};
+    Object.keys(params).forEach((k) => {
+      translated = translated.replace(`{${k}}`, String(params[k]));
+    });
+    return translated;
+  }
+  return error?.message || String(error || "");
 }
 
 export function createApiClient(token) {
@@ -99,19 +114,65 @@ export function createApiClient(token) {
         }
       }
 
+      // Check if session explicitly expired (4-hour limit reached)
       if (finalResponse.status === 401 && token && typeof window !== "undefined") {
+        if (finalResponse.headers.get("Content-Type")?.includes("application/json")) {
+          const jsonErr = await finalResponse.json().catch(() => null);
+          if (jsonErr?.sessionExpired) {
+            window.dispatchEvent(new CustomEvent("ut:session-expired"));
+            const err = new Error(jsonErr.error || "Session expired");
+            err.status = 401;
+            err.sessionExpired = true;
+            throw err;
+          }
+        }
         window.dispatchEvent(new CustomEvent("ut:auth-invalid"));
       }
 
       const contentType = finalResponse.headers.get("Content-Type") || "";
       if (contentType.includes("application/json")) {
         const json = await finalResponse.json().catch(() => null);
+        // If backend returned a structured error object, preserve key and params
+        if (json && typeof json.error === "object" && json.error !== null && (json.error.key || json.error.params || json.error.message)) {
+          const err = new Error(json.error.message || JSON.stringify(json.error) || finalResponse.statusText);
+          err.status = finalResponse.status;
+          err.errorKey = json.error.key || json.errorKey || null;
+          err.errorParams = json.error.params || json.errorParams || null;
+          err.requestId = json.requestId || null;
+          // Translate error message to current language
+          if (err.errorKey) {
+            err.message = translateError(err);
+          }
+          throw err;
+        }
+
         const error = json?.error || json?.message;
-        throw new Error(error || finalResponse.statusText);
+        const err = new Error(error || finalResponse.statusText);
+        err.status = finalResponse.status;
+        // Detect legacy raw supplier error string and attach structured key for localization
+        try {
+          const m = String(err.message || "").match(/Supplier API failed with\s*(\d+)/i);
+          if (m) {
+            err.errorKey = "supplierApiFailedWithStatus";
+            err.errorParams = { code: m[1] };
+            err.message = translateError(err);
+          }
+        } catch {}
+        throw err;
       }
 
       const text = await finalResponse.text();
-      throw new Error(text || finalResponse.statusText);
+      const err = new Error(text || finalResponse.statusText);
+      err.status = finalResponse.status;
+      try {
+        const m = String(err.message || "").match(/Supplier API failed with\s*(\d+)/i);
+        if (m) {
+          err.errorKey = "supplierApiFailedWithStatus";
+          err.errorParams = { code: m[1] };
+          err.message = translateError(err);
+        }
+      } catch {}
+      throw err;
     }
     return finalResponse.json();
   };

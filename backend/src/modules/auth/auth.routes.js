@@ -150,7 +150,9 @@ if (!appleEnabled) {
 const signupSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  password: z.string().min(8).regex(/[A-Z]/, "must contain an uppercase letter").regex(/[a-z]/, "must contain a lowercase letter").regex(/\d/, "must contain a number").regex(/[^A-Za-z0-9]/, "must contain a symbol")
+  password: z.string().min(8).regex(/[A-Z]/, "must contain an uppercase letter").regex(/[a-z]/, "must contain a lowercase letter").regex(/\d/, "must contain a number").regex(/[^A-Za-z0-9]/, "must contain a symbol"),
+  country_code: z.string().length(2).optional(),
+  country: z.string().optional()
 });
 
 const loginSchema = z.object({
@@ -178,6 +180,7 @@ async function createUser(name, email, hashedPassword, verificationToken = null,
     provider: extraFields.provider || "local",
     providers: extraFields.providers || [extraFields.provider || "local"],
     emailVerified: env.disableEmailVerification ? true : false,
+    status: extraFields.status ?? "active",
     verificationToken: verificationToken,
     verificationTokenExpiry: verificationToken ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null,
     created_at: new Date(),
@@ -202,7 +205,8 @@ async function findUserById(id) {
   return customers.findOne({ id });
 }
 
-const ACCESS_TOKEN_EXPIRES_IN = "15m";
+const ACCESS_TOKEN_EXPIRES_IN = "4h";
+const SESSION_MAX_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
 const REFRESH_TOKEN_COOKIE_NAME = "refreshToken";
 const REMEMBER_REFRESH_TOKEN_DAYS = 90;
 const SESSION_REFRESH_TOKEN_DAYS = 1;
@@ -223,6 +227,7 @@ async function addRefreshToken(userId, token, expiresAt, remember, meta = {}) {
     expiresAt,
     remember: Boolean(remember),
     createdAt: new Date(),
+    loginAt: meta.loginAt || new Date(),
     ip: meta.ip || null,
     userAgent: meta.userAgent || null
   };
@@ -254,7 +259,10 @@ authRouter.post("/signup", async (req, res, next) => {
 
     const hashedPassword = await bcrypt.hash(payload.password, 10);
     const verificationToken = env.disableEmailVerification ? null : crypto.randomBytes(32).toString("hex");
-    const user = await createUser(payload.name, payload.email, hashedPassword, verificationToken);
+    const user = await createUser(payload.name, payload.email, hashedPassword, verificationToken, {
+      country: payload.country || null,
+      country_code: payload.country_code || null
+    });
 
     if (!env.disableEmailVerification) {
       const emailResult = await sendVerificationEmail(payload.email, verificationToken);
@@ -334,7 +342,13 @@ authRouter.get("/verify-email", async (req, res, next) => {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role
+      role: user.role,
+      country: user.country || null,
+      country_code: user.country_code || null,
+      phone: user.phone || null,
+      address: user.address || null,
+      city: user.city || null,
+      postalCode: user.postalCode || null
     };
     const jwtToken = jwt.sign(tokenUser, env.jwtSecret, { expiresIn: "7d" });
 
@@ -412,19 +426,35 @@ authRouter.post("/login", async (req, res, next) => {
       return;
     }
 
+    if (user.status && user.status !== "active") {
+      res.status(403).json({
+        error: "Account disabled",
+        message: "This account is deactivated. Reactivate from the admin dashboard before logging in."
+      });
+      return;
+    }
+
     const tokenUser = {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role
+      role: user.role,
+      country: user.country || null,
+      country_code: user.country_code || null,
+      phone: user.phone || null,
+      address: user.address || null,
+      city: user.city || null,
+      postalCode: user.postalCode || null
     };
     const rememberFlag = req.body && (req.body.remember === true || req.body.remember === "1" || req.body.remember === "true");
     const accessToken = jwt.sign(tokenUser, env.jwtSecret, { expiresIn: ACCESS_TOKEN_EXPIRES_IN });
     const refreshToken = createRefreshToken();
     const refreshExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * (rememberFlag ? REMEMBER_REFRESH_TOKEN_DAYS : SESSION_REFRESH_TOKEN_DAYS));
+    const loginAt = new Date();
     await addRefreshToken(user.id, refreshToken, refreshExpiresAt, rememberFlag, {
       ip: req.ip,
-      userAgent: req.get("user-agent")
+      userAgent: req.get("user-agent"),
+      loginAt
     });
 
     res.cookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
@@ -434,7 +464,7 @@ authRouter.post("/login", async (req, res, next) => {
       expires: refreshExpiresAt
     });
 
-    res.json({ user: tokenUser, token: accessToken });
+    res.json({ user: tokenUser, token: accessToken, loginAt: loginAt.toISOString() });
   } catch (err) {
     if (err instanceof z.ZodError) {
       const field = err.errors[0].path[0] || 'input';
@@ -543,11 +573,34 @@ authRouter.post("/refresh", async (req, res, next) => {
       return;
     }
 
+    if (user.status && user.status !== "active") {
+      await removeRefreshToken(user.id, refreshToken);
+      res.status(403).json({ error: "Account disabled" });
+      return;
+    }
+
     const tokenHash = hashToken(refreshToken);
     const tokenRecord = user.refreshTokens.find((record) => record.tokenHash === tokenHash);
     if (!tokenRecord || new Date(tokenRecord.expiresAt) <= new Date()) {
       await removeRefreshToken(user.id, refreshToken);
       res.status(401).json({ error: "Refresh token expired" });
+      return;
+    }
+
+    // Check if the session has exceeded the maximum duration (4 hours)
+    const loginAt = tokenRecord.loginAt ? new Date(tokenRecord.loginAt) : null;
+    if (loginAt && (Date.now() - loginAt.getTime()) >= SESSION_MAX_DURATION_MS) {
+      // Session expired - remove all refresh tokens to force re-login
+      await getCollection("customers").updateOne(
+        { id: user.id },
+        { $set: { refreshTokens: [] } }
+      );
+      res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: env.enforceSameSiteStrict ? "strict" : "lax"
+      });
+      res.status(401).json({ error: "Session expired", sessionExpired: true });
       return;
     }
 
@@ -562,9 +615,11 @@ authRouter.post("/refresh", async (req, res, next) => {
     const refreshExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * (tokenRecord.remember ? REMEMBER_REFRESH_TOKEN_DAYS : SESSION_REFRESH_TOKEN_DAYS));
 
     await removeRefreshToken(user.id, refreshToken);
+    // Preserve the original loginAt when rotating the refresh token
     await addRefreshToken(user.id, newRefreshToken, refreshExpiresAt, tokenRecord.remember, {
       ip: req.ip,
-      userAgent: req.get("user-agent")
+      userAgent: req.get("user-agent"),
+      loginAt: loginAt || new Date()
     });
 
     res.cookie(REFRESH_TOKEN_COOKIE_NAME, newRefreshToken, {
@@ -633,9 +688,11 @@ if (googleEnabled) {
       const accessToken = jwt.sign(tokenUser, env.jwtSecret, { expiresIn: ACCESS_TOKEN_EXPIRES_IN });
       const refreshToken = createRefreshToken();
       const refreshExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * (remember === "1" ? REMEMBER_REFRESH_TOKEN_DAYS : SESSION_REFRESH_TOKEN_DAYS));
+      const loginAt = new Date();
       await addRefreshToken(user.id, refreshToken, refreshExpiresAt, remember === "1", {
         ip: req.ip,
-        userAgent: req.get("user-agent")
+        userAgent: req.get("user-agent"),
+        loginAt
       });
 
       res.cookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
@@ -651,6 +708,7 @@ if (googleEnabled) {
       redirectUrl.searchParams.set("role", user.role);
       redirectUrl.searchParams.set("next", nextUrl);
       redirectUrl.searchParams.set("remember", remember);
+      redirectUrl.searchParams.set("loginAt", loginAt.toISOString());
       res.redirect(redirectUrl.toString());
     }
   );
@@ -696,9 +754,11 @@ if (appleEnabled) {
       const accessToken = jwt.sign(tokenUser, env.jwtSecret, { expiresIn: ACCESS_TOKEN_EXPIRES_IN });
       const refreshToken = createRefreshToken();
       const refreshExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * (remember === "1" ? REMEMBER_REFRESH_TOKEN_DAYS : SESSION_REFRESH_TOKEN_DAYS));
+      const loginAt = new Date();
       await addRefreshToken(user.id, refreshToken, refreshExpiresAt, remember === "1", {
         ip: req.ip,
-        userAgent: req.get("user-agent")
+        userAgent: req.get("user-agent"),
+        loginAt
       });
 
       res.cookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
@@ -714,6 +774,7 @@ if (appleEnabled) {
       redirectUrl.searchParams.set("role", user.role);
       redirectUrl.searchParams.set("next", nextUrl);
       redirectUrl.searchParams.set("remember", remember);
+      redirectUrl.searchParams.set("loginAt", loginAt.toISOString());
       res.redirect(redirectUrl.toString());
     }
   );
@@ -725,6 +786,50 @@ if (appleEnabled) {
     res.status(501).json({ error: "Apple OAuth is not configured." });
   });
 }
+
+const profileUpdateSchema = z.object({
+  country_code: z.string().length(2).optional(),
+  country: z.string().optional(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  postalCode: z.string().optional()
+});
+
+authRouter.put("/me", requireAuth, async (req, res, next) => {
+  try {
+    const payload = profileUpdateSchema.parse(req.body || {});
+    const customers = await getCollection("customers");
+    const updateFields = {};
+
+    if (payload.country) updateFields.country = payload.country;
+    if (payload.country_code) updateFields.country_code = payload.country_code;
+    if (payload.phone) updateFields.phone = payload.phone;
+    if (payload.address) updateFields.address = payload.address;
+    if (payload.city) updateFields.city = payload.city;
+    if (payload.postalCode) updateFields.postalCode = payload.postalCode;
+
+    if (Object.keys(updateFields).length === 0) {
+      res.status(400).json({ error: "No valid profile fields provided." });
+      return;
+    }
+
+    await customers.updateOne({ id: req.user.id }, { $set: updateFields });
+    const updatedUser = await customers.findOne(
+      { id: req.user.id },
+      { projection: { _id: 0, id: 1, name: 1, email: 1, role: 1, status: 1, country: 1, country_code: 1, phone: 1, address: 1, city: 1, postalCode: 1 } }
+    );
+
+    res.json({ user: updatedUser });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const field = err.errors[0]?.path?.[0] || "input";
+      res.status(400).json({ error: `Invalid ${field}` });
+      return;
+    }
+    next(err);
+  }
+});
 
 authRouter.get("/me", requireAuth, (req, res) => {
   res.json({ authenticated: true, user: req.user });

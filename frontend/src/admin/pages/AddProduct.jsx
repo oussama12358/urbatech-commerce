@@ -79,7 +79,7 @@ export default function AddProduct() {
     const form = Object.fromEntries(new FormData(event.currentTarget));
     const category = form.newCategory?.trim() || form.category;
 
-    try {
+        try {
       await addProduct({
         name: form.name,
         category,
@@ -89,7 +89,7 @@ export default function AddProduct() {
         cost_price: numberValue(costPrice || form.cost_price),
         product_source: "internal",
         auto_sync: false,
-        status: form.status,
+        // status field removed from AddProduct form
         description: form.desc,
         lead: form.lead,
         warranty: form.warranty,
@@ -130,14 +130,6 @@ export default function AddProduct() {
             <label className="field-group">
               <span>{t("brand")}</span>
               <input className="input" name="brand" placeholder={t("brand")} />
-            </label>
-            <label className="field-group">
-              <RequiredLabel>{t("status")}</RequiredLabel>
-              <select className="select" name="status" defaultValue="Active" required>
-                <option value="Active">{t("active")}</option>
-                <option value="Inactive">{t("inactive")}</option>
-                <option value="Draft">{t("draft")}</option>
-              </select>
             </label>
           </div>
         </div>

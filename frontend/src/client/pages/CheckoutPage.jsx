@@ -7,6 +7,13 @@ import { t, useLocale } from "../../i18n.js";
 import { money } from "../../shared/lib/format.js";
 import { showToast } from "../../shared/lib/toast.js";
 import COUNTRIES, { PHONE_DATA, DIAL_CODES, getCountryByCode } from "../../shared/lib/countries.js";
+import {
+  getProductShipsTo,
+  isProductAvailableInCountry,
+  readStoredShippingCountryCode,
+  writeShippingCountryCode,
+  subscribeShippingCountry
+} from "../../shared/lib/shipping.js";
 import { searchCities } from "../../shared/lib/cities.js";
 
 function CountryFlagImage({ src, alt }) {
@@ -15,8 +22,9 @@ function CountryFlagImage({ src, alt }) {
 
 function CountryAutocomplete({ value, onChange }) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => (value ? value.name : ""));
   const ref = useRef(null);
+  const inputRef = useRef(null);
   const prevValueRef = useRef(value);
 
   // Sync query when value changes externally (e.g. clear)
@@ -54,9 +62,23 @@ function CountryAutocomplete({ value, onChange }) {
 
   return (
     <div className="country-autocomplete" ref={ref}>
-      <div className="country-input-wrap">
+      <div
+        className="country-input-wrap"
+        onClick={() => {
+          // clicking the wrapper focuses input and clears current selection so user can pick/type a different country
+          if (inputRef.current) {
+            if (value) {
+              onChange(null);
+              setQuery("");
+            }
+            inputRef.current.focus();
+            setOpen(true);
+          }
+        }}
+      >
         {value && query === value.name && <CountryFlagImage src={value.flagSrc} alt={value.code} />}
         <input
+          ref={inputRef}
           className="input country-input"
           placeholder={t("country")}
           value={query}
@@ -74,13 +96,15 @@ function CountryAutocomplete({ value, onChange }) {
           }}
           onBlur={() => {
             blurTimerRef.current = setTimeout(() => {
-              if (!value) setQuery("");
+              if (value) setQuery(value.name);
+              else setQuery("");
             }, 300);
           }}
           onFocus={() => {
             if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
             // Show all countries on focus when nothing selected
             if (!value) setQuery("");
+            else setQuery(value.name);
             setOpen(true);
           }}
         />
@@ -299,10 +323,13 @@ function PhoneInput({ phoneCode, phoneFormat, onCodeChange, name }) {
 export default function CheckoutPage() {
   const navigate = useNavigate();
   useLocale();
-  const { user, cartLines, totals, clearCart, createOrder, createCheckoutSession, paymentProviders } = useStore();
+  const { user, cartLines, totals, clearCart, createOrder, createCheckoutSession, paymentProviders, updateProfile } = useStore();
 
   const [paymentMethod, setPaymentMethod] = useState("");
-  const [selectedCountry, setSelectedCountry] = useState(null);
+  const [selectedCountry, setSelectedCountry] = useState(() => {
+    const code = user?.country_code || readStoredShippingCountryCode();
+    return code ? getCountryByCode(code) || null : null;
+  });
   const [selectedCity, setSelectedCity] = useState("");
   const [phoneCode, setPhoneCode] = useState("");
   const [phoneFormat, setPhoneFormat] = useState("");
@@ -328,17 +355,61 @@ export default function CheckoutPage() {
     }
   }, [enabledPaymentProviders, paymentMethod]);
 
+  // For authenticated users, prefer their profile country (or empty if none).
+  // For guests, subscribe to stored shipping country updates.
+  useEffect(() => {
+    if (user) {
+      if (user.country_code) {
+        const profileCountry = getCountryByCode(user.country_code);
+        setSelectedCountry(profileCountry || null);
+        if (profileCountry) writeShippingCountryCode(profileCountry.code);
+      } else {
+        setSelectedCountry(null);
+      }
+      return () => {};
+    }
+
+    const unsubscribe = subscribeShippingCountry((code) => {
+      setSelectedCountry(code ? getCountryByCode(code) || null : null);
+    });
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   // When country changes, auto-update phone code & format, or reset if null
   useEffect(() => {
     if (selectedCountry) {
       const dial = DIAL_CODES[selectedCountry.code];
       if (dial) setPhoneCode(dial);
       if (selectedCountry.phoneFormat) setPhoneFormat(selectedCountry.phoneFormat);
+      writeShippingCountryCode(selectedCountry.code);
     } else {
       setPhoneCode("");
       setPhoneFormat("");
     }
   }, [selectedCountry]);
+
+  useEffect(() => {
+    if (user?.token && selectedCountry && selectedCountry.code && user.country_code !== selectedCountry.code) {
+      const syncProfile = async () => {
+        try {
+          await updateProfile({ country_code: selectedCountry.code, country: selectedCountry.name });
+        } catch (error) {
+          console.warn("Unable to sync checkout country to profile", error);
+        }
+      };
+      syncProfile();
+    }
+  }, [selectedCountry, user?.token, user?.country_code, updateProfile]);
+
+  const blockedItems = cartLines.filter((item) => {
+    const outOfStock = typeof item.stock === "number" && item.stock <= 0;
+    const restricted = Boolean(getProductShipsTo(item));
+    const unavailableInCountry = selectedCountry
+      ? isProductAvailableInCountry(item, selectedCountry).available === false
+      : restricted;
+    return outOfStock || unavailableInCountry;
+  });
 
   // When phone code changes directly (from PhoneInput dropdown), update format & sync country
   useEffect(() => {
@@ -368,6 +439,22 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (blockedItems.length) {
+      const names = blockedItems.map((item) => item.name).join(", ");
+      const outOfStockOnly = blockedItems.every((item) => typeof item.stock === "number" && item.stock <= 0);
+      if (outOfStockOnly) {
+        showToast(`${names} ${t("outOfStock")}`, "error");
+      } else {
+        showToast(
+          t("notAvailableInYourCountryItems")
+            .replace("{country}", selectedCountry.name)
+            .replace("{items}", names),
+          "error"
+        );
+      }
+      return;
+    }
+
     // Validate city - must be selected from list
     if (!selectedCity || !searchCities(selectedCity, selectedCountry?.code).some(c => c.city === selectedCity && c.code === selectedCountry?.code)) {
       showToast(t("selectValidCity"), "error");
@@ -387,6 +474,7 @@ export default function CheckoutPage() {
       ...formValues,
       city: selectedCity,
       country: selectedCountry?.name,
+      country_code: selectedCountry?.code,
       customerName: `${formValues.firstName || ""} ${formValues.lastName || ""}`.trim() || user?.name,
       customerEmail: user?.email || formValues.email,
       phone: `${phoneCode} ${phoneDigits}`.trim()
@@ -444,8 +532,7 @@ export default function CheckoutPage() {
           <div className="form-grid two">
             <label>
               {t("country")} *
-              <CountryAutocomplete value={selectedCountry} onChange={setSelectedCountry} />
-            </label>
+              <CountryAutocomplete value={selectedCountry} onChange={setSelectedCountry} />            </label>
             <label>
               {t("city")} *
               <CitySearch countryCode={selectedCountry?.code} value={selectedCity} onChange={setSelectedCity} onCountryChange={setSelectedCountry} />
@@ -512,7 +599,7 @@ export default function CheckoutPage() {
                 <button
                   className="primary-btn full-width"
                   type="submit"
-                  disabled={!enabledPaymentProviders.length}
+                  disabled={!enabledPaymentProviders.length || blockedItems.length > 0}
                 >
                   {t("pay")} {enabledPaymentProviders.length ? money(totals.total) : ""}
                 </button>
@@ -522,6 +609,15 @@ export default function CheckoutPage() {
                 {t("backToCart")}
               </Link>
             </div>
+            {blockedItems.length > 0 && (
+              <div className="country-unavailable-banner" role="alert" style={{ marginTop: 14 }}>
+                {selectedCountry
+                  ? t("notAvailableInYourCountryItems")
+                      .replace("{country}", selectedCountry.name)
+                      .replace("{items}", blockedItems.map((item) => item.name).join(", "))
+                  : t("selectValidCountry")}
+              </div>
+            )}
           </div>
         </form>
 
@@ -536,14 +632,32 @@ export default function CheckoutPage() {
             </div>
           </div>
           <div className="summary-items">
-            {cartLines.map((item) => (
-              <div key={item.id} className="summary-item">
-                <span>{item.name}</span>
-                <span>{item.qty} × {money(item.price)}</span>
-                <strong>{money(item.qty * item.price)}</strong>
-              </div>
-            ))}
+            {cartLines.map((item) => {
+              const restricted = Boolean(getProductShipsTo(item));
+              const unavailable = selectedCountry
+                ? isProductAvailableInCountry(item, selectedCountry).available === false
+                : restricted;
+              return (
+                <div key={item.id} className={`summary-item ${unavailable ? "summary-item-unavailable" : ""}`}>
+                  <span>
+                    {item.name}
+                    {unavailable ? (
+                      <em className="country-unavailable-note">
+                        {selectedCountry ? t("notAvailableInYourCountry") : t("checkAvailabilityInCountry")}
+                      </em>
+                    ) : null}
+                  </span>
+                  <span>{item.qty} × {money(item.price)}</span>
+                  <strong>{money(item.qty * item.price)}</strong>
+                </div>
+              );
+            })}
           </div>
+          {blockedItems.length > 0 && (
+            <div className="country-unavailable-banner" role="alert">
+              {t("notAvailableInYourCountryBanner").replace("{country}", selectedCountry?.name || "")}
+            </div>
+          )}
           <div className="summary-meta">
             <span>{t("estimatedDelivery")}</span>
             <strong>{t("businessDays")}</strong>

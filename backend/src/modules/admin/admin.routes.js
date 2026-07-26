@@ -275,7 +275,8 @@ adminRouter.get("/reports", async (_req, res, next) => {
     const suppliers = await getCollection("suppliers");
     const activeProducts = await products.countDocuments({ active: true });
     const connectedSuppliers = await suppliers.countDocuments({ status: "Connected" });
-    const paidOrders = orders.filter((order) => order.payment_status === "paid");
+      const totalSuppliers = await suppliers.countDocuments();
+      const paidOrders = orders.filter((order) => order.payment_status === "paid");
     const dispatchedOrders = orders.filter((order) => order.supplier_order_id || order.supplier_dispatches?.length);
     const revenue = paidOrders.reduce((sum, order) => sum + order.total, 0);
     const settlements = await summarizeSupplierSettlements();
@@ -287,6 +288,7 @@ adminRouter.get("/reports", async (_req, res, next) => {
       data: {
         active_products: activeProducts,
         connected_suppliers: connectedSuppliers,
+          total_suppliers: totalSuppliers,
         total_orders: orders.length,
         paid_orders: paidOrders.length,
         supplier_dispatched_orders: dispatchedOrders.length,

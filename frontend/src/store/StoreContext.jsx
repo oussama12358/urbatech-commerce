@@ -1,6 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { readStorage, writeStorage } from "../shared/lib/storage.js";
 import { createApiClient } from "../shared/lib/api.js";
+import {
+  getProductShipsTo,
+  isProductAvailableInCountry,
+  readShippingCountryCode
+} from "../shared/lib/shipping.js";
 
 const StoreContext = createContext(null);
 
@@ -192,13 +197,60 @@ export function StoreProvider({ children }) {
     }
   };
 
+  // Session timeout: 4 hours (same as backend SESSION_MAX_DURATION_MS)
+  const SESSION_TIMEOUT_MS = 4 * 60 * 60 * 1000;
+
   useEffect(() => {
     const handleInvalidAuth = () => {
       persistUser(null);
     };
+    const handleSessionExpired = () => {
+      persistUser(null);
+    };
     window.addEventListener("ut:auth-invalid", handleInvalidAuth);
-    return () => window.removeEventListener("ut:auth-invalid", handleInvalidAuth);
+    window.addEventListener("ut:session-expired", handleSessionExpired);
+    return () => {
+      window.removeEventListener("ut:auth-invalid", handleInvalidAuth);
+      window.removeEventListener("ut:session-expired", handleSessionExpired);
+    };
   }, []);
+
+  // Client-side session timeout: auto-logout after 4 hours from login
+  useEffect(() => {
+    if (!user?.token) return undefined;
+
+    // Try to get loginAt from stored user data or from the token
+    let loginTime = user.loginAt ? new Date(user.loginAt).getTime() : null;
+
+    // If no loginAt stored, decode the JWT to get iat (issued at)
+    if (!loginTime && user.token) {
+      try {
+        const payload = JSON.parse(atob(user.token.split('.')[1]));
+        if (payload.iat) {
+          loginTime = payload.iat * 1000;
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    if (!loginTime) return undefined;
+
+    const elapsed = Date.now() - loginTime;
+    const remaining = Math.max(0, SESSION_TIMEOUT_MS - elapsed);
+
+    if (remaining <= 0) {
+      // Session already expired
+      persistUser(null);
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      persistUser(null);
+    }, remaining);
+
+    return () => clearTimeout(timeoutId);
+  }, [user?.token]);
 
   useEffect(() => {
     if (!user?.token) return undefined;
@@ -304,6 +356,16 @@ export function StoreProvider({ children }) {
   }, [user?.token, user?.role]);
 
   const addToCart = (id, qty = 1) => {
+    const product = products.find((item) => item.id === id);
+    if (product && product.stock <= 0) {
+      return;
+    }
+    const shipCountryCode = user?.country_code || readShippingCountryCode();
+    const availability = product ? isProductAvailableInCountry(product, shipCountryCode) : { available: true };
+    const needsCountryCheck = product ? Boolean(getProductShipsTo(product)) : false;
+    if (product && (availability.available === false || (availability.available === null && needsCountryCheck))) {
+      return;
+    }
     if (cart[id]) {
       return;
     }
@@ -341,10 +403,46 @@ export function StoreProvider({ children }) {
     const nextOrders = [json.data, ...orders];
     setOrders(nextOrders);
     writeStorage(KEYS.orders, nextOrders);
+
+    const nextUser = user
+      ? {
+          ...user,
+          phone: billing.phone || user.phone,
+          address: billing.address || user.address,
+          city: billing.city || user.city,
+          country: billing.country || user.country,
+          country_code: billing.country_code || user.country_code,
+          postalCode: billing.postalCode || user.postalCode
+        }
+      : user;
+
+    if (nextUser && JSON.stringify(nextUser) !== JSON.stringify(user)) {
+      setUserState(nextUser);
+      writeStorage(KEYS.user, nextUser);
+    }
+
     if (options.clearCartAfterCreate !== false) {
       clearCart();
     }
     return json.data;
+  };
+
+  const updateProfile = async (profileUpdate) => {
+    if (!user?.token) {
+      throw new Error("Login required to update profile.");
+    }
+    const api = createApiClient(user.token);
+    const json = await api("/auth/me", {
+      method: "PUT",
+      body: JSON.stringify(profileUpdate)
+    });
+    if (!json?.user) {
+      throw new Error("Unable to update profile.");
+    }
+    const nextUser = { ...user, ...json.user };
+    setUserState(nextUser);
+    writeStorage(KEYS.user, nextUser);
+    return nextUser;
   };
 
   const createStripeCheckout = async (orderId) => {
@@ -410,10 +508,12 @@ export function StoreProvider({ children }) {
     if (!json?.data) throw new Error("Unable to update supplier");
     const next = suppliers.map((item) => (item.id === id ? json.data : item));
     setSuppliers(next);
+    const productsJson = await api("/products");
+    if (productsJson?.data) setProducts(productsJson.data);
     return json.data;
   };
 
-  const deleteSupplier = async (id, deleteAction = "deactivate") => {
+  const deleteSupplier = async (id, deleteAction = "delete") => {
     if (!user?.token) throw new Error("Admin authentication required");
     const api = createApiClient(user.token);
     await api(`/suppliers/${id}?deleteAction=${encodeURIComponent(deleteAction)}`, { method: "DELETE" });
@@ -595,6 +695,7 @@ export function StoreProvider({ children }) {
     orders,
     addOrder,
     createOrder,
+    updateProfile,
     createCheckoutSession
   };
 

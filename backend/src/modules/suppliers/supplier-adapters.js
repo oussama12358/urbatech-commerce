@@ -73,7 +73,8 @@ const defaultProductMapping = {
   barcode: "barcode|ean|upc|gtin",
   category: "category|category_name",
   specs: "specs|attributes",
-  images: "images|image_urls"
+  images: "images|image_urls",
+  ships_to_countries: "ships_to_countries|ships_to|available_countries|shipping_countries|countries"
 };
 
 const defaultOrderMapping = {
@@ -148,7 +149,14 @@ export class SupplierAdapter {
     });
     const body = await parseJson(response);
     if (!response.ok) {
-      throw new Error(body.error || body.message || `Supplier API failed with ${response.status}`);
+      const msg = (body && (body.error?.message || body.message || body.error)) || `Supplier API failed with ${response.status}`;
+      const err = new Error(msg);
+      err.status = response.status;
+      // Provide a translation key and params for the frontend to localize this error
+      err.errorKey = (body && (body.error?.key || body.errorKey)) || "supplierApiFailedWithStatus";
+      err.errorParams = (body && (body.error?.params || body.errorParams)) || { code: response.status };
+      err.body = body;
+      throw err;
     }
     return body;
   }
@@ -168,6 +176,16 @@ export class SupplierAdapter {
     const stock = Number(firstValue(product, this.productMapping.stock, 0));
     const specs = firstValue(product, this.productMapping.specs, []);
     const images = firstValue(product, this.productMapping.images, []);
+    const shipsToRaw = firstValue(product, this.productMapping.ships_to_countries, null);
+    let shipsToCountries = [];
+    if (Array.isArray(shipsToRaw)) {
+      shipsToCountries = shipsToRaw.map((item) => String(item).trim()).filter(Boolean);
+    } else if (shipsToRaw) {
+      shipsToCountries = String(shipsToRaw)
+        .split(/[|;,/]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
     return {
       supplier_product_id: String(firstValue(product, this.productMapping.supplier_product_id, "")),
       sku: String(firstValue(product, this.productMapping.sku, firstValue(product, this.productMapping.supplier_product_id, "")) || ""),
@@ -183,7 +201,8 @@ export class SupplierAdapter {
       barcode: String(firstValue(product, this.productMapping.barcode, "") || ""),
       category: firstValue(product, this.productMapping.category, null),
       specs: Array.isArray(specs) ? specs : [],
-      images: Array.isArray(images) ? images : []
+      images: Array.isArray(images) ? images : [],
+      ships_to_countries: shipsToCountries
     };
   }
 

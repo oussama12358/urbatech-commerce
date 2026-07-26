@@ -37,6 +37,7 @@ export default function AdminRoutes() {
       <Route path="customers/:id" element={<CustomerDetails />} />
       <Route path="categories" element={<Categories />} />
       <Route path="suppliers" element={<Suppliers />} />
+      
       <Route path="payments" element={<PaymentProviders />} />
       <Route path="settlements" element={<Settlements />} />
       <Route path="reports" element={<Reports />} />

@@ -8,6 +8,7 @@ import {
 } from "../notifications/notification.service.js";
 import { ensureSupplierSettlementsForOrder } from "../settlements/settlement.service.js";
 import { getSupplierAdapter } from "./supplier-adapters.js";
+import { normalizeCountryCodes } from "../../utils/shipping-countries.js";
 
 const MAX_DISPATCH_ATTEMPTS = 6;
 const RETRY_BASE_DELAY_MS = 5 * 60 * 1000;
@@ -207,6 +208,8 @@ export function publicSupplier(supplier) {
     supports_orders: Boolean(supplier.supports_orders),
     supports_stock: Boolean(supplier.supports_stock),
     supports_prices: Boolean(supplier.supports_prices),
+    // Empty = ships worldwide
+    ships_to_countries: Array.isArray(supplier.ships_to_countries) ? supplier.ships_to_countries : [],
     last_sync_at: supplier.last_sync_at || null,
     products_count: supplier.products_count || 0,
     orders_today: supplier.orders_today || 0,
@@ -241,6 +244,8 @@ export async function syncSupplierProducts(id) {
   let updated = 0;
   const syncAt = new Date();
 
+  const supplierShipsTo = normalizeCountryCodes(supplier.ships_to_countries);
+
   for (const item of supplierProducts) {
     if (!item.supplier_product_id) continue;
     const categoryId = await ensureCategoryId(item.category);
@@ -250,6 +255,9 @@ export async function syncSupplierProducts(id) {
     const margin = marginFrom(price, costPrice);
     const productId = `${slugify(item.name) || "supplier-product"}-${String(id).slice(0, 8)}-${item.supplier_product_id}`.slice(0, 90);
     const supplierStatus = normalizeSupplierStatus(item.status, stock);
+    const productShipsTo = normalizeCountryCodes(item.ships_to_countries);
+    const shipsToOverride = productShipsTo.length > 0;
+    const shipsToCountries = shipsToOverride ? productShipsTo : supplierShipsTo;
     await products.updateOne(
       { supplier_id: id, supplier_product_id: item.supplier_product_id },
       {
@@ -275,6 +283,8 @@ export async function syncSupplierProducts(id) {
           dedupe_key: makeDedupeKey(item, id),
           images: item.images || [],
           specs: item.specs || [],
+          ships_to_countries: shipsToCountries,
+          ships_to_override: shipsToOverride,
           auto_sync: true,
           active: true,
           updated_at: new Date()
@@ -317,9 +327,11 @@ export async function syncAllConnectedSuppliers() {
       await suppliers.updateOne({ id: supplier.id }, { $set: { api_health: "Offline", last_sync_error: err.message } });
       notifyAdminAlert({
         subject: `Supplier API failed: ${supplier.company_name || supplier.id}`,
+        subjectKey: "supplierApiFailedWithStatus",
+        subjectParams: { code: err.status || "unknown", supplier: supplier.company_name || supplier.id },
         type: "admin_supplier_api_failed",
         message: err.message,
-        entity: { supplier_id: supplier.id, company_name: supplier.company_name, action: "product_sync" },
+        entity: { supplier_id: supplier.id, company_name: supplier.company_name, action: "product_sync", error_status: err.status || null },
         dedupeKey: `admin_supplier_api_failed:sync:${supplier.id}:${err.message}`
       }).catch((notifyErr) => console.error("[notification:supplier-api-failed]", notifyErr.message));
       results.push({ supplier_id: supplier.id, error: err.message });
@@ -617,6 +629,8 @@ export async function syncSupplierOrderStatuses({ limit = 100 } = {}) {
       } catch (err) {
         notifyAdminAlert({
           subject: `Supplier API failed: ${supplier.company_name || supplier.id}`,
+          subjectKey: "supplierApiFailedWithStatus",
+          subjectParams: { code: err.status || "unknown", supplier: supplier.company_name || supplier.id },
           type: "admin_supplier_api_failed",
           message: err.message,
           entity: {
@@ -624,7 +638,8 @@ export async function syncSupplierOrderStatuses({ limit = 100 } = {}) {
             company_name: supplier.company_name,
             order_id: order.id,
             supplier_order_id: dispatch.supplier_order_id,
-            action: "status_sync"
+            action: "status_sync",
+            error_status: err.status || null
           },
           dedupeKey: `admin_supplier_api_failed:status:${supplier.id}:${dispatch.supplier_order_id}:${err.message}`
         }).catch((notifyErr) => console.error("[notification:supplier-api-failed]", notifyErr.message));

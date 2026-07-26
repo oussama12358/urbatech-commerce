@@ -15,6 +15,7 @@ import {
   testSupplierConnection,
   verifyWebhookSignature
 } from "./supplier.service.js";
+import { normalizeCountryCodes } from "../../utils/shipping-countries.js";
 
 const supplierSchema = z.object({
   company_name: z.string().min(2),
@@ -41,11 +42,14 @@ const supplierSchema = z.object({
   payout_email: z.string().optional().default(""),
   paypal_email: z.string().optional().default(""),
   stripe_account_id: z.string().optional().default(""),
+  status: z.enum(["Active", "Inactive", "Connected", "Disconnected", "Syncing"]).optional(),
   supports_products: z.boolean().default(true),
   supports_tracking: z.boolean().default(true),
   supports_orders: z.boolean().default(true),
   supports_stock: z.boolean().default(true),
-  supports_prices: z.boolean().default(true)
+  supports_prices: z.boolean().default(true),
+  // Empty array = ships worldwide. Non-empty = only these ISO country codes (e.g. ["TN","FR"]).
+  ships_to_countries: z.array(z.string()).optional().default([])
 });
 
 const importProductsSchema = z.object({
@@ -115,8 +119,9 @@ suppliersRouter.post("/", async (req, res, next) => {
     const supplier = {
       id: createId(),
       ...payload,
-      status: "Disconnected",
-      api_health: "Unknown",
+      ships_to_countries: normalizeCountryCodes(payload.ships_to_countries),
+      status: payload.api_url ? "Disconnected" : payload.status || "Active",
+      api_health: payload.api_url ? "Unknown" : "Manual",
       products_count: 0,
       orders_today: 0,
       created_at: new Date()
@@ -139,7 +144,43 @@ suppliersRouter.put("/:id", async (req, res, next) => {
         return;
       }
     }
-    await suppliers.updateOne({ id: req.params.id }, { $set: { ...payload, updated_at: new Date() } });
+    if (payload.status === "Inactive") {
+      const products = await getCollection("products");
+      await products.updateMany(
+        { supplier_id: req.params.id },
+        { $set: { supplier_status: "inactive", visibility: "hidden", updated_at: new Date() } }
+      );
+    } else if (payload.status === "Active") {
+      const products = await getCollection("products");
+      await products.updateMany(
+        { supplier_id: req.params.id },
+        { $set: { supplier_status: "active", visibility: "visible", updated_at: new Date() } }
+      );
+    }
+
+    const updateFields = { ...payload, updated_at: new Date() };
+    if (payload.ships_to_countries !== undefined) {
+      updateFields.ships_to_countries = normalizeCountryCodes(payload.ships_to_countries);
+      // Cascade supplier shipping countries to products that do not have a product-level override
+      const products = await getCollection("products");
+      await products.updateMany(
+        {
+          supplier_id: req.params.id,
+          $or: [
+            { ships_to_override: { $ne: true } },
+            { ships_to_override: { $exists: false } }
+          ]
+        },
+        {
+          $set: {
+            ships_to_countries: updateFields.ships_to_countries,
+            updated_at: new Date()
+          }
+        }
+      );
+    }
+
+    await suppliers.updateOne({ id: req.params.id }, { $set: updateFields });
     const supplier = await suppliers.findOne({ id: req.params.id });
     if (!supplier) {
       res.status(404).json({ error: "Supplier not found" });
@@ -155,13 +196,15 @@ suppliersRouter.delete("/:id", async (req, res, next) => {
   try {
     const suppliers = await getCollection("suppliers");
     const products = await getCollection("products");
+    const importBatches = await getCollection("product_import_batches");
     const supplier = await suppliers.findOne({ id: req.params.id });
     if (!supplier) {
       res.status(404).json({ error: "Supplier not found" });
       return;
     }
-    const deleteAction = String(req.query.deleteAction || "deactivate").toLowerCase();
+    const deleteAction = String(req.query.deleteAction || "delete").toLowerCase();
     await suppliers.deleteOne({ id: req.params.id });
+    await importBatches.deleteMany({ supplier_id: req.params.id });
     if (deleteAction === "delete") {
       await products.deleteMany({ supplier_id: req.params.id });
     } else if (deleteAction === "keep") {

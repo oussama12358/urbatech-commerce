@@ -16,6 +16,19 @@ export function errorHandler(error, req, res, _next) {
     return;
   }
 
+  // If the error includes a structured localization key, return it so the frontend can localize the message
+  if (error.errorKey) {
+    res.status(error.status || 500).json({
+      error: {
+        key: error.errorKey,
+        params: error.errorParams || null,
+        message: error.message || "Internal server error"
+      },
+      requestId: id
+    });
+    return;
+  }
+
   res.status(error.status || 500).json({
     error: error.message || "Internal server error",
     requestId: id

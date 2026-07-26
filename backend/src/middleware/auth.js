@@ -40,7 +40,7 @@ export async function optionalAuth(req, _res, next) {
     { projection: { _id: 0, id: 1, name: 1, email: 1, role: 1, status: 1 } }
   );
 
-  if (user) {
+  if (user && user.status === "active") {
     req.user = user;
   }
 
@@ -65,11 +65,16 @@ export async function requireAuth(req, res, next) {
   const customers = await getCollection("customers");
   const user = await customers.findOne(
     { id: tokenUser.id },
-    { projection: { _id: 0, id: 1, name: 1, email: 1, role: 1, status: 1 } }
+    { projection: { _id: 0, id: 1, name: 1, email: 1, role: 1, status: 1, country: 1, country_code: 1, phone: 1, address: 1, city: 1, postalCode: 1 } }
   );
 
   if (!user) {
     res.status(401).json({ error: "User not found" });
+    return;
+  }
+
+  if (user.status && user.status !== "active") {
+    res.status(403).json({ error: "Account disabled" });
     return;
   }
 

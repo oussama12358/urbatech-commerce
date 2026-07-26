@@ -75,7 +75,7 @@ export default function EditProduct() {
     const form = Object.fromEntries(new FormData(event.currentTarget));
     const category = form.newCategory?.trim() || form.category;
 
-    try {
+      try {
       await updateProduct(product.id, {
         name: form.name,
         category,
@@ -83,7 +83,7 @@ export default function EditProduct() {
         stock: Number(form.stock),
         margin: numberValue(margin || form.margin),
         cost_price: numberValue(costPrice || form.cost_price),
-        status: form.status,
+        // status removed from EditProduct form
         description: form.desc,
         lead: form.lead,
         warranty: form.warranty,
@@ -127,11 +127,6 @@ export default function EditProduct() {
             <input className="input" name="name" defaultValue={product.name} placeholder={t("productNamePlaceholder")} required />
             <div className="form-grid two">
               <input className="input" name="brand" defaultValue={product.brand || ""} placeholder={t("brand")} />
-              <select className="select" name="status" defaultValue={product.status || "Active"}>
-                <option value="Active">{t("active")}</option>
-                <option value="Inactive">{t("inactive")}</option>
-                <option value="Draft">{t("draft")}</option>
-              </select>
             </div>
           </div>
 

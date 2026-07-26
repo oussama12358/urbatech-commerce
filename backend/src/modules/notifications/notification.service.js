@@ -111,7 +111,7 @@ async function loadOrderWithItems(orderId) {
   return { ...order, items };
 }
 
-export async function sendNotificationEmail({ to, subject, html, type, entity = {}, dedupeKey = "" }) {
+export async function sendNotificationEmail({ to, subject, html, type, entity = {}, dedupeKey = "", subject_key = null, subject_params = null }) {
   const toList = recipients(to);
   const notifications = await getCollection("email_notifications");
   const now = new Date();
@@ -125,6 +125,8 @@ export async function sendNotificationEmail({ to, subject, html, type, entity = 
     type,
     to: toList,
     subject,
+    subject_key: subject_key || null,
+    subject_params: subject_params || null,
     entity,
     dedupe_key: dedupeKey || null,
     created_at: now,
@@ -336,10 +338,12 @@ export async function notifySupplierSettlementPaid(settlement) {
   });
 }
 
-export async function notifyAdminAlert({ subject, type, message, entity = {}, dedupeKey = "" }) {
+export async function notifyAdminAlert({ subject, subjectKey = null, subjectParams = null, type, message, entity = {}, dedupeKey = "" }) {
   return sendNotificationEmail({
     to: env.adminNotificationEmails,
     subject,
+    subject_key: subjectKey,
+    subject_params: subjectParams,
     type,
     entity,
     dedupeKey,

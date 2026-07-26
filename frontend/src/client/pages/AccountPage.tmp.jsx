@@ -17,18 +17,9 @@ export default function AccountPage() {
 
       <section className="panel account-panel">
         <div className="kv">
-          <div className="kv-row">
-            <span>{t("name")}</span>
-            <strong>{user?.name || "-"}</strong>
-          </div>
-          <div className="kv-row">
-            <span>{t("email")}</span>
-            <strong>{user?.email || "-"}</strong>
-          </div>
-          <div className="kv-row">
-            <span>{t("country")}</span>
-            <strong>{user?.country || user?.country_code || "-"}</strong>
-          </div>
+          <div className="kv-row"><span>{t("name")}</span><strong>{user?.name || "-"}</strong></div>
+          <div className="kv-row"><span>{t("email")}</span><strong>{user?.email || "-"}</strong></div>
+          <div className="kv-row"><span>{t("country")}</span><strong>{user?.country || user?.country_code || "-"}</strong></div>
         </div>
         <div className="panel-actions" style={{ marginTop: 16 }}>
           <Link className="secondary-btn" to="/logout">{t("logout")}</Link>

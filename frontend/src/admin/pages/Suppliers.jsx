@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Eye, Plug, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Eye, List, Plug, Power, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useStore } from "../../store/StoreContext.jsx";
 import { t, useLocale } from "../../i18n.js";
+import COUNTRIES from "../../shared/lib/countries.js";
+import { normalizeCountryCodes } from "../../shared/lib/shipping.js";
 
 const defaultCapabilities = {
   supports_products: true,
@@ -20,7 +23,6 @@ export default function Suppliers() {
   const [pendingSupplier, setPendingSupplier] = useState(null);
   const [detailsSupplier, setDetailsSupplier] = useState(null);
   const [deleteSupplierTarget, setDeleteSupplierTarget] = useState(null);
-  const [deleteImportedProducts, setDeleteImportedProducts] = useState(false);
   const [authMode, setAuthMode] = useState("bearer");
   const [customHeaders, setCustomHeaders] = useState([]);
   const [importSupplierId, setImportSupplierId] = useState("");
@@ -29,6 +31,10 @@ export default function Suppliers() {
   const [importHistory, setImportHistory] = useState([]);
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState("");
+  const [apiShipsTo, setApiShipsTo] = useState("");
+  const [manualShipsTo, setManualShipsTo] = useState("");
+  const [detailsShipsTo, setDetailsShipsTo] = useState("");
+  const [detailsShipsBusy, setDetailsShipsBusy] = useState(false);
   const formRef = useRef(null);
 
   useEffect(() => {
@@ -64,9 +70,29 @@ export default function Suppliers() {
   const getFriendlyError = (error) => {
     const message = String(error?.message || error || "").trim();
     const normalized = message.toLowerCase();
-
     if (!message) {
       return t("unableToConnectSupplier");
+    }
+
+    // If backend provided a structured error key + params, use it for localization
+    if (error && error.errorKey) {
+      let translated = t(error.errorKey);
+      const params = error.errorParams || {};
+      Object.keys(params).forEach((k) => {
+        translated = translated.replace(`{${k}}`, String(params[k]));
+      });
+      return translated;
+    }
+
+    // Map backend supplier API errors with status to localized message (fallback)
+    if (error && error.status) {
+      return t("supplierApiFailedWithStatus").replace("{code}", String(error.status));
+    }
+    // Fallback: raw message containing supplier API failed with code
+    if (normalized.includes("supplier api failed")) {
+      const m = message.match(/Supplier API failed with\s*(\d+)/i);
+      const code = m ? m[1] : "unknown";
+      return t("supplierApiFailedWithStatus").replace("{code}", String(code));
     }
     if (normalized.includes("failed to parse url") || normalized.includes("invalid url") || normalized.includes("invalid api url")) {
       return t("invalidApiUrlExample");
@@ -77,14 +103,15 @@ export default function Suppliers() {
     return message;
   };
 
-  const submit = async (event) => {
+  const submitSupplier = async (event, mode) => {
     event.preventDefault();
     setError("");
     setPendingSupplier(null);
     setFormPhase("saving");
 
     const form = Object.fromEntries(new FormData(event.currentTarget));
-    const apiUrl = String(form.api_url || "").trim();
+    const isManualIntegration = mode === "manual";
+    const apiUrl = isManualIntegration ? "" : String(form.api_url || "").trim();
     if (apiUrl) {
       try {
         new URL(apiUrl);
@@ -97,26 +124,28 @@ export default function Suppliers() {
 
     const payload = {
       company_name: form.company_name,
-      adapter: form.adapter,
+      adapter: isManualIntegration ? "generic" : "universal",
       api_url: apiUrl,
       notification_email: form.notification_email,
       contact_email: form.notification_email,
-      auth_mode: form.auth_mode,
-      api_key: form.api_key,
-      api_secret: form.api_secret,
-      api_key_header: form.api_key_header || t("apiKeyHeaderDefault"),
-      webhook_secret: form.webhook_secret,
-      custom_headers: authMode === "custom-headers"
+      auth_mode: isManualIntegration ? "none" : form.auth_mode,
+      api_key: isManualIntegration ? "" : form.api_key,
+      api_secret: isManualIntegration ? "" : form.api_secret,
+      api_key_header: isManualIntegration ? t("apiKeyHeaderDefault") : form.api_key_header || t("apiKeyHeaderDefault"),
+      webhook_secret: isManualIntegration ? "" : form.webhook_secret,
+      custom_headers: !isManualIntegration && authMode === "custom-headers"
         ? customHeaders.reduce((headers, entry) => {
             if (entry.name?.trim()) headers[entry.name.trim()] = entry.value || "";
             return headers;
           }, {})
         : {},
-      supports_products: Boolean(form.supports_products),
-      supports_stock: Boolean(form.supports_stock),
-      supports_prices: Boolean(form.supports_prices),
-      supports_orders: Boolean(form.supports_orders),
-      supports_tracking: Boolean(form.supports_tracking)
+      supports_products: isManualIntegration ? true : Boolean(form.supports_products),
+      supports_stock: isManualIntegration ? false : Boolean(form.supports_stock),
+      supports_prices: isManualIntegration ? false : Boolean(form.supports_prices),
+      supports_orders: isManualIntegration ? true : Boolean(form.supports_orders),
+      supports_tracking: isManualIntegration ? false : Boolean(form.supports_tracking),
+      ships_to_countries: normalizeCountryCodes(isManualIntegration ? manualShipsTo : apiShipsTo),
+      ...(isManualIntegration ? { status: form.status || "Active" } : {})
     };
 
     try {
@@ -127,6 +156,7 @@ export default function Suppliers() {
           await testSupplier(supplier.id);
           setFormPhase("success");
           event.currentTarget.reset();
+          setApiShipsTo("");
           setTimeout(() => setFormPhase("idle"), 3000);
         } catch (testError) {
           setPendingSupplier(supplier);
@@ -136,6 +166,7 @@ export default function Suppliers() {
       } else {
         setFormPhase("success");
         event.currentTarget.reset();
+        setManualShipsTo("");
         setTimeout(() => setFormPhase("idle"), 3000);
       }
     } catch (err) {
@@ -144,29 +175,79 @@ export default function Suppliers() {
     }
   };
 
+  const submitApiSupplier = (event) => submitSupplier(event, "api");
+
+  const submitManualSupplier = (event) => submitSupplier(event, "manual");
+
   const promptDeleteSupplier = (supplier) => {
     setDeleteSupplierTarget(supplier);
-    setDeleteImportedProducts(false);
   };
 
   const closeDeleteSupplier = () => {
     setDeleteSupplierTarget(null);
-    setDeleteImportedProducts(false);
   };
 
   const confirmDeleteSupplier = async () => {
     if (!deleteSupplierTarget) return;
-    const action = deleteImportedProducts ? "delete" : "deactivate";
-    await runAction(deleteSupplierTarget.id, (id) => deleteSupplier(id, action));
+    await runAction(deleteSupplierTarget.id, (id) => deleteSupplier(id, "delete"));
     closeDeleteSupplier();
+  };
+
+  const openSupplierImport = (supplier) => {
+    setImportSupplierId(supplier.id);
+    setImportFile(null);
+    setImportPreview(null);
+    setImportError("");
+  };
+
+  const closeSupplierImport = () => {
+    setImportSupplierId("");
+    setImportFile(null);
+    setImportPreview(null);
+    setImportError("");
+    setImportHistory([]);
   };
 
   const openSupplierDetails = (supplier) => {
     setDetailsSupplier(supplier);
+    setDetailsShipsTo((supplier.ships_to_countries || []).join(", "));
   };
 
   const closeSupplierDetails = () => {
     setDetailsSupplier(null);
+    setDetailsShipsTo("");
+    setDetailsShipsBusy(false);
+  };
+
+  const saveDetailsShipsTo = async () => {
+    if (!detailsSupplier) return;
+    setDetailsShipsBusy(true);
+    setError("");
+    try {
+      const shipsTo = normalizeCountryCodes(detailsShipsTo);
+      const updated = await runAction(detailsSupplier.id, (id) =>
+        updateSupplier(id, { ships_to_countries: shipsTo })
+      );
+      if (updated) {
+        setDetailsSupplier(updated);
+        setDetailsShipsTo((updated.ships_to_countries || []).join(", "));
+      }
+    } catch (err) {
+      setError(getFriendlyError(err) || t("supplierActionFailed"));
+    } finally {
+      setDetailsShipsBusy(false);
+    }
+  };
+
+  const formatShipsToDisplay = (codes) => {
+    const list = Array.isArray(codes) ? codes : [];
+    if (!list.length) return t("shipsWorldwide");
+    return list
+      .map((code) => {
+        const country = COUNTRIES.find((item) => item.code === code);
+        return country ? `${country.name} (${code})` : code;
+      })
+      .join(", ");
   };
 
   const runAction = async (id, action) => {
@@ -177,7 +258,7 @@ export default function Suppliers() {
       const result = await action(id);
       return result;
     } catch (err) {
-      setError(err.message || t("supplierActionFailed"));
+      setError(getFriendlyError(err) || t("supplierActionFailed"));
       throw err;
     } finally {
       setBusyId("");
@@ -190,6 +271,12 @@ export default function Suppliers() {
     setFormPhase("idle");
   };
 
+  const setManualSupplierStatus = async (supplier, status) => {
+    const updated = await runAction(supplier.id, (id) => updateSupplier(id, { status }));
+    if (detailsSupplier?.id === supplier.id && updated) setDetailsSupplier(updated);
+    return updated;
+  };
+
   const discardPendingSupplier = async () => {
     if (!pendingSupplier) return;
     await deleteSupplier(pendingSupplier.id);
@@ -199,7 +286,7 @@ export default function Suppliers() {
   };
 
   const statusVariant = (status) => {
-    if (status === "Connected") return "connected";
+    if (status === "Connected" || status === "Active") return "connected";
     if (status === "Syncing") return "syncing";
     return "disconnected";
   };
@@ -221,6 +308,9 @@ export default function Suppliers() {
     if (value.includes("healthy") || value.includes("ok") || value.includes("good")) {
       label = t("healthy");
       variant = "healthy";
+    } else if (value.includes("manual")) {
+      label = t("manual");
+      variant = "unknown";
     } else if (value.includes("warn") || value.includes("degraded")) {
       label = t("warning");
       variant = "warning";
@@ -235,6 +325,13 @@ export default function Suppliers() {
       </span>
     );
   };
+
+  const renderIntegration = (supplier) => {
+    if (!supplier.api_url || supplier.adapter === "generic") return t("sourceImport");
+    return t("sourceApi");
+  };
+
+  const isManualSupplierRecord = (supplier) => !supplier.api_url || supplier.adapter === "generic";
 
   const formatLastSync = (timestamp) => {
     if (!timestamp) return t("neverSynced");
@@ -263,7 +360,7 @@ export default function Suppliers() {
 
   const previewImport = async () => {
     if (!importSupplierId || !importFile) {
-      setImportError(t("selectSupplierAndFile"));
+      setImportError(t("selectProductFile"));
       return;
     }
     setImportBusy(true);
@@ -278,7 +375,7 @@ export default function Suppliers() {
       });
       setImportPreview(preview);
     } catch (err) {
-      setImportError(err.message || t("unableToPreviewImport"));
+      setImportError(getFriendlyError(err) || t("unableToPreviewImport"));
     } finally {
       setImportBusy(false);
     }
@@ -300,11 +397,16 @@ export default function Suppliers() {
       const history = await listSupplierProductImports(importSupplierId).catch(() => []);
       setImportHistory(history);
     } catch (err) {
-      setImportError(err.message || t("unableToImportProducts"));
+      setImportError(getFriendlyError(err) || t("unableToImportProducts"));
     } finally {
       setImportBusy(false);
     }
   };
+
+  const importTargetSupplier = suppliers.find((supplier) => supplier.id === importSupplierId) || null;
+  const visibleSuppliers = suppliers.filter((supplier) => !pendingSupplier || supplier.id !== pendingSupplier.id);
+  const apiSuppliers = visibleSuppliers.filter((supplier) => !isManualSupplierRecord(supplier));
+  const manualSuppliers = visibleSuppliers.filter(isManualSupplierRecord);
 
   return (
     <main className="admin-main">
@@ -319,34 +421,26 @@ export default function Suppliers() {
       <section className="panel form-grid supplier-panel" style={{ marginBottom: 18 }}>
         <div className="admin-section-head">
           <div>
-            <h2>{t("newSupplier")}</h2>
-            <span>{t("configureSupplierLead")}</span>
+            <h2>{t("newApiSupplier")}</h2>
+            <span>{t("configureApiSupplierLead")}</span>
           </div>
         </div>
         {error && <div className="error-message">{error}</div>}
-        <form ref={formRef} className="form-grid supplier-form" onSubmit={submit}>
+        <form ref={formRef} className="form-grid supplier-form" onSubmit={submitApiSupplier}>
           <div className="form-grid three">
             <label className="field-group">
               <span>{t("companyName")}</span>
               <input className="input" name="company_name" placeholder={t("supplierCompanyPlaceholder")} required />
             </label>
             <label className="field-group">
-              <span>{t("integrationType")}</span>
-              <select className="select" name="adapter" defaultValue="universal">
-                <option value="universal">{t("universalRestApi")}</option>
-              </select>
+              <span>{t("apiUrl")}</span>
+              <input className="input" name="api_url" placeholder={t("apiUrlPlaceholder")} required />
             </label>
             <label className="field-group">
-              <span>{t("apiUrl")}</span>
-              <input className="input" name="api_url" placeholder={t("apiUrlPlaceholder")} />
+              <span>{t("supplierNotificationEmail")}</span>
+              <input className="input" name="notification_email" type="email" placeholder="supplier@example.com" />
             </label>
           </div>
-
-          <label className="field-group full-width">
-            <span>{t("supplierNotificationEmail")}</span>
-            <input className="input" name="notification_email" type="email" placeholder="supplier@example.com" />
-            <small className="field-hint">{t("supplierNotificationEmailHint")}</small>
-          </label>
 
           <div className="form-grid three">
             <label className="field-group">
@@ -382,7 +476,7 @@ export default function Suppliers() {
               <>
                 <label className="field-group">
                   <span>{t("headerName")}</span>
-                  <input className="input" name="api_key_header" defaultValue={t("apiKeyHeaderDefault")} />
+                  <input className="input" name="api_key_header" placeholder={t("apiKeyHeaderDefault")} />
                 </label>
                 <label className="field-group">
                   <span>{t("apiKey")}</span>
@@ -471,6 +565,17 @@ export default function Suppliers() {
             <small className="field-hint">{t("webhookSecretHint")}</small>
           </label>
 
+          <label className="field-group full-width">
+            <span>{t("shipsToCountries")}</span>
+            <input
+              className="input"
+              value={apiShipsTo}
+              onChange={(event) => setApiShipsTo(event.target.value)}
+              placeholder={t("shipsToCountriesPlaceholder")}
+            />
+            <small className="field-hint">{t("shipsToCountriesHint")}</small>
+          </label>
+
           <div className="capability-grid">
             {Object.entries(defaultCapabilities).map(([name]) => (
               <label key={name} className="capability-card">
@@ -508,165 +613,70 @@ export default function Suppliers() {
       <section className="panel form-grid supplier-panel" style={{ marginBottom: 18 }}>
         <div className="admin-section-head">
           <div>
-            <h2>{t("importSupplierProducts")}</h2>
-            <span>{t("importSupplierProductsLead")}</span>
+            <h2>{t("newExcelSupplier")}</h2>
+            <span>{t("configureExcelSupplierLead")}</span>
           </div>
         </div>
-        {importError && <div className="error-message">{importError}</div>}
-        <div className="form-grid three">
-          <label className="field-group">
-            <span>{t("supplier")}</span>
-            <select
-              className="select"
-              value={importSupplierId}
-              onChange={(event) => {
-                setImportSupplierId(event.target.value);
-                setImportPreview(null);
-                setImportError("");
-              }}
-            >
-              <option value="">{t("selectSupplier")}</option>
-              {suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>{supplier.company_name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="field-group">
-            <span>{t("productFile")}</span>
+        <form className="form-grid supplier-form" onSubmit={submitManualSupplier}>
+          <div className="form-grid three">
+            <label className="field-group">
+              <span>{t("companyName")}</span>
+              <input className="input" name="company_name" placeholder={t("supplierCompanyPlaceholder")} required />
+            </label>
+            <label className="field-group">
+              <span>{t("supplierNotificationEmail")}</span>
+              <input className="input" name="notification_email" type="email" placeholder="supplier@example.com" />
+            </label>
+            <label className="field-group">
+              <span>{t("status")}</span>
+              <select className="select" name="status" defaultValue="Active">
+                <option value="Active">{t("active")}</option>
+                <option value="Inactive">{t("inactive")}</option>
+              </select>
+            </label>
+          </div>
+          <label className="field-group full-width">
+            <span>{t("shipsToCountries")}</span>
             <input
               className="input"
-              type="file"
-              accept=".xlsx,.csv"
-              onChange={(event) => {
-                setImportFile(event.target.files?.[0] || null);
-                setImportPreview(null);
-                setImportError("");
-              }}
+              value={manualShipsTo}
+              onChange={(event) => setManualShipsTo(event.target.value)}
+              placeholder={t("shipsToCountriesPlaceholder")}
             />
+            <small className="field-hint">{t("shipsToCountriesHint")}</small>
           </label>
-          <div className="button-row" style={{ alignItems: "end" }}>
-            <button className="secondary-btn" type="button" disabled={importBusy} onClick={previewImport}>
-              <Upload />
-              {importBusy ? t("processing") : t("previewImport")}
+          <div className="field-note full-width">{t("manualSupplierImportHint")}</div>
+          <div className="button-row">
+            <button className="primary-btn supplier-save-btn" type="submit" disabled={formPhase === "saving" || formPhase === "testing"}>
+              {formPhase === "saving" ? t("savingSupplier") : t("saveSupplier")}
             </button>
           </div>
-        </div>
-        {importPreview && (
-          <div className="import-preview">
-            <div className="stat-grid">
-              <div className="stat-card"><strong>{importPreview.total_rows}</strong><span>{t("rowsFound")}</span></div>
-              <div className="stat-card"><strong>{importPreview.valid_count}</strong><span>{t("validProducts")}</span></div>
-              <div className="stat-card"><strong>{importPreview.error_count}</strong><span>{t("importErrors")}</span></div>
-            </div>
-            {importPreview.sample?.length > 0 && (
-              <div className="table-responsive">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>{t("product")}</th>
-                      <th>{t("supplierSku")}</th>
-                      <th>{t("category")}</th>
-                      <th>{t("price")}</th>
-                      <th>{t("cost")}</th>
-                      <th>{t("stock")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importPreview.sample.map((product, index) => (
-                      <tr key={`${product.supplier_product_id || product.name}-${index}`}>
-                        <td>{product.name}</td>
-                        <td>{product.supplier_product_id || "-"}</td>
-                        <td>{product.category || "-"}</td>
-                        <td>{product.price}</td>
-                        <td>{product.cost_price}</td>
-                        <td>{product.stock}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {importPreview.errors?.length > 0 && (
-              <div className="error-message">
-                {importPreview.errors.slice(0, 5).map((item) => (
-                  <div key={item.row}>{t("row")} {item.row}: {item.errors.join(" ")}</div>
-                ))}
-              </div>
-            )}
-            {!importPreview.dry_run && (
-              <div className="form-status-success">
-                {t("importCompleted")}: {importPreview.imported_count || 0} {t("imported")}, {importPreview.created_count || 0} {t("created")}, {importPreview.updated_count || 0} {t("updated")}, {importPreview.skipped_count || 0} {t("skipped")}
-                {importPreview.duplicate_candidates_count ? `, ${importPreview.duplicate_candidates_count} ${t("duplicateCandidates")}` : ""}
-              </div>
-            )}
-            {importPreview.dry_run && (
-              <button className="primary-btn" type="button" disabled={importBusy || !importPreview.valid_count} onClick={commitImport}>
-                {importBusy ? t("processing") : t("importProducts")}
-              </button>
-            )}
-          </div>
-        )}
-        {importHistory.length > 0 && (
-          <div className="table-responsive">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t("file")}</th>
-                  <th>{t("rowsFound")}</th>
-                  <th>{t("validProducts")}</th>
-                  <th>{t("importErrors")}</th>
-                  <th>{t("imported")}</th>
-                  <th>{t("created")}</th>
-                  <th>{t("updated")}</th>
-                  <th>{t("skipped")}</th>
-                  <th>{t("duplicates")}</th>
-                  <th>{t("duration")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {importHistory.map((batch) => (
-                  <tr key={batch.id}>
-                    <td>{batch.file_name}</td>
-                    <td>{batch.total_rows}</td>
-                    <td>{batch.valid_count}</td>
-                    <td>{batch.error_count}</td>
-                    <td>{batch.imported_count || 0}</td>
-                    <td>{batch.created_count || 0}</td>
-                    <td>{batch.updated_count || 0}</td>
-                    <td>{batch.skipped_count || 0}</td>
-                    <td>{batch.duplicate_candidates_count || 0}</td>
-                    <td>{formatDuration(batch.duration_ms)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        </form>
       </section>
 
-      <section className="panel">
+      <section className="panel" style={{ marginBottom: 18 }}>
         <div className="admin-section-head">
-          <h2>{t("connectedSuppliersTitle")}</h2>
-          <span>{suppliers.filter((supplier) => !pendingSupplier || supplier.id !== pendingSupplier.id).length} {t("suppliers")}</span>
+          <h2>{t("apiSuppliersTitle")}</h2>
+          <span>{apiSuppliers.length} {t("suppliers")}</span>
         </div>
-        {suppliers.length ? (
+        {apiSuppliers.length ? (
           <table className="table">
             <thead>
               <tr>
                 <th>{t("supplier")}</th>
                 <th>{t("status")}</th>
+                <th>{t("products")}</th>
                 <th>{t("apiHealth")}</th>
                 <th>{t("lastSync")}</th>
                 <th>{t("actions")}</th>
               </tr>
             </thead>
             <tbody>
-              {suppliers
-                .filter((supplier) => !pendingSupplier || supplier.id !== pendingSupplier.id)
-                .map((supplier) => (
+              {apiSuppliers.map((supplier) => (
                   <tr key={supplier.id}>
                     <td>{supplier.company_name}</td>
                     <td>{renderStatus(supplier.status)}</td>
+                    <td>{supplier.products_count || 0}</td>
                     <td>{renderHealth(supplier.api_health)}</td>
                     <td>{formatLastSync(supplier.last_sync_at)}</td>
                     <td>
@@ -716,9 +726,92 @@ export default function Suppliers() {
         ) : (
           <div className="empty-state">
             <div>
-              <div className="empty-state-icon">📦</div>
-              <h3>{t("noSuppliersConnectedYet")}</h3>
+              <h3>{t("noApiSuppliersYet")}</h3>
               <p>{t("connectYourFirstSupplierLead")}</p>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="admin-section-head">
+          <h2>{t("excelSuppliersTitle")}</h2>
+          <span>{manualSuppliers.length} {t("suppliers")}</span>
+        </div>
+        {manualSuppliers.length ? (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{t("supplier")}</th>
+                <th>{t("status")}</th>
+                <th>{t("products")}</th>
+                <th>{t("lastSync")}</th>
+                <th>{t("actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {manualSuppliers.map((supplier) => (
+                <tr key={supplier.id}>
+                  <td>{supplier.company_name}</td>
+                  <td>{renderStatus(supplier.status)}</td>
+                  <td>{supplier.products_count || 0}</td>
+                  <td>{formatLastSync(supplier.last_sync_at)}</td>
+                  <td>
+                    <div className="row-actions">
+                      <button
+                        className="icon-btn"
+                        type="button"
+                        title={t("importSupplierProducts")}
+                        disabled={busyId === supplier.id || supplier.status === "Inactive"}
+                        onClick={() => openSupplierImport(supplier)}
+                      >
+                        <Upload />
+                      </button>
+                      <Link
+                        className="icon-btn"
+                        title={t("viewProducts")}
+                        to={`/admin/products?source=import&supplier_id=${encodeURIComponent(supplier.id)}`}
+                      >
+                        <List />
+                      </Link>
+                      <button
+                        className="icon-btn"
+                        type="button"
+                        title={supplier.status === "Inactive" ? t("activateSupplier") : t("deactivateSupplier")}
+                        disabled={busyId === supplier.id}
+                        onClick={() => setManualSupplierStatus(supplier, supplier.status === "Inactive" ? "Active" : "Inactive")}
+                      >
+                        <Power />
+                      </button>
+                      <button
+                        className="icon-btn"
+                        type="button"
+                        title={t("supplierDetails")}
+                        disabled={busyId === supplier.id}
+                        onClick={() => openSupplierDetails(supplier)}
+                      >
+                        <Eye />
+                      </button>
+                      <button
+                        className="icon-btn danger-icon"
+                        type="button"
+                        title={t("deleteSupplier")}
+                        disabled={busyId === supplier.id}
+                        onClick={() => promptDeleteSupplier(supplier)}
+                      >
+                        <Trash2 />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="empty-state">
+            <div>
+              <h3>{t("noExcelSuppliersYet")}</h3>
+              <p>{t("manualSupplierImportHint")}</p>
             </div>
           </div>
         )}
@@ -736,8 +829,16 @@ export default function Suppliers() {
             <h2 id="supplier-details-title">{detailsSupplier.company_name}</h2>
               <div className="supplier-details-grid">
               <div>
+                <strong>{t("integrationType")}</strong>
+                <p>{renderIntegration(detailsSupplier)}</p>
+              </div>
+              <div>
+                <strong>{t("products")}</strong>
+                <p>{detailsSupplier.products_count || 0}</p>
+              </div>
+              <div>
                 <strong>{t("apiUrl")}</strong>
-                <p>{detailsSupplier.api_url}</p>
+                <p>{detailsSupplier.api_url || "-"}</p>
               </div>
               <div>
                 <strong>{t("supplierNotificationEmail")}</strong>
@@ -759,61 +860,227 @@ export default function Suppliers() {
                 <strong>{t("lastSync")}</strong>
                 <p>{formatLastSync(detailsSupplier.last_sync_at)}</p>
               </div>
-              
-              <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
-                <strong>{t('suppliersIntegration')}</strong>
-                <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-                  {[
-                    ['supports_products', t('products')],
-                    ['supports_stock', t('stock')],
-                    ['supports_prices', t('price')],
-                    ['supports_orders', t('orders')],
-                    ['supports_tracking', t('tracking')]
-                  ].map(([key, label]) => (
-                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(detailsSupplier[key])}
-                        onChange={async (e) => {
-                          const checked = e.target.checked;
-                          const supplierId = detailsSupplier.id;
-                          const supplierApiUrl = detailsSupplier.api_url;
-                          // optimistic UI update so clicks feel responsive
-                          setDetailsSupplier((prev) => ({ ...prev, [key]: checked }));
-                          // debug log to help trace UI events
-                          // eslint-disable-next-line no-console
-                          console.log('[Suppliers] checkbox change', { supplierId, key, checked });
-                          try {
-                            const updated = await runAction(supplierId, (id) => updateSupplier(id, { [key]: checked }));
-                            // eslint-disable-next-line no-console
-                            console.log('[Suppliers] updateSupplier result', updated);
-                            if (updated) setDetailsSupplier(updated);
-                            // If enabling a capability and supplier has api_url, trigger sync
-                            if (checked && (updated?.api_url || supplierApiUrl)) {
-                              // fire-and-forget sync, but show busy state
-                              runAction(supplierId, syncSupplier).catch(() => {});
-                            }
-                          } catch (err) {
-                            // revert optimistic update on failure
-                            setDetailsSupplier((prev) => ({ ...prev, [key]: !checked }));
-                          }
-                        }}
-                      />
-                      <span>{label}</span>
-                    </label>
-                  ))}
+              <div style={{ gridColumn: "1 / -1" }}>
+                <strong>{t("shipsToCountries")}</strong>
+                <p style={{ marginBottom: 8 }}>{formatShipsToDisplay(detailsSupplier.ships_to_countries)}</p>
+                <div className="form-grid" style={{ gap: 8 }}>
+                  <input
+                    className="input"
+                    value={detailsShipsTo}
+                    onChange={(event) => setDetailsShipsTo(event.target.value)}
+                    placeholder={t("shipsToCountriesPlaceholder")}
+                  />
+                  <small className="field-hint">{t("shipsToCountriesHint")}</small>
+                  <button
+                    className="secondary-btn"
+                    type="button"
+                    disabled={detailsShipsBusy}
+                    onClick={saveDetailsShipsTo}
+                  >
+                    {detailsShipsBusy ? t("savingSupplier") : t("saveShipsToCountries")}
+                  </button>
                 </div>
               </div>
-              <div>
-                <strong>{t("webhook")}</strong>
-                <p>{detailsSupplier.webhook_secret ? t("enabled") : t("disabled")}</p>
-              </div>
+
+              {!isManualSupplierRecord(detailsSupplier) && (
+                <>
+                  <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
+                    <strong>{t('suppliersIntegration')}</strong>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                      {[
+                        ['supports_products', t('products')],
+                        ['supports_stock', t('stock')],
+                        ['supports_prices', t('price')],
+                        ['supports_orders', t('orders')],
+                        ['supports_tracking', t('tracking')]
+                      ].map(([key, label]) => (
+                        <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(detailsSupplier[key])}
+                            onChange={async (e) => {
+                              const checked = e.target.checked;
+                              const supplierId = detailsSupplier.id;
+                              const supplierApiUrl = detailsSupplier.api_url;
+                              setDetailsSupplier((prev) => ({ ...prev, [key]: checked }));
+                              try {
+                                const updated = await runAction(supplierId, (id) => updateSupplier(id, { [key]: checked }));
+                                if (updated) setDetailsSupplier(updated);
+                                if (checked && (updated?.api_url || supplierApiUrl)) {
+                                  runAction(supplierId, syncSupplier).catch(() => {});
+                                }
+                              } catch (err) {
+                                setDetailsSupplier((prev) => ({ ...prev, [key]: !checked }));
+                              }
+                            }}
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <strong>{t("webhook")}</strong>
+                    <p>{detailsSupplier.webhook_secret ? t("enabled") : t("disabled")}</p>
+                  </div>
+                </>
+              )}
             </div>
             <div className="confirm-actions">
+              {isManualSupplierRecord(detailsSupplier) && (
+                <button
+                  className="secondary-btn"
+                  type="button"
+                  disabled={busyId === detailsSupplier.id}
+                  onClick={() => setManualSupplierStatus(detailsSupplier, detailsSupplier.status === "Inactive" ? "Active" : "Inactive")}
+                >
+                  <Power />
+                  {detailsSupplier.status === "Inactive" ? t("activateSupplier") : t("deactivateSupplier")}
+                </button>
+              )}
               <button className="secondary-btn" type="button" onClick={closeSupplierDetails}>
                 {t("close")}
               </button>
             </div>
+          </section>
+        </div>
+      )}
+      {importTargetSupplier && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={closeSupplierImport}>
+          <section
+            className="confirm-dialog wide-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="supplier-import-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="admin-section-head">
+              <div>
+                <h2 id="supplier-import-title">{t("importSupplierProducts")}</h2>
+                <span>{importTargetSupplier.company_name}</span>
+              </div>
+            </div>
+            <p className="page-copy">{t("importSupplierProductsLead")}</p>
+            {importError && <div className="error-message">{importError}</div>}
+            <div className="form-grid two">
+              <label className="field-group">
+                <span>{t("supplier")}</span>
+                <input className="input muted-input" value={importTargetSupplier.company_name} disabled readOnly />
+              </label>
+              <label className="field-group">
+                <span>{t("productFile")}</span>
+                <input
+                  className="input"
+                  type="file"
+                  accept=".xlsx,.csv"
+                  onChange={(event) => {
+                    setImportFile(event.target.files?.[0] || null);
+                    setImportPreview(null);
+                    setImportError("");
+                  }}
+                />
+              </label>
+            </div>
+            <div className="button-row">
+              <button className="secondary-btn" type="button" onClick={closeSupplierImport}>
+                {t("cancel")}
+              </button>
+              <button className="primary-btn" type="button" disabled={importBusy} onClick={previewImport}>
+                <Upload />
+                {importBusy ? t("processing") : t("previewImport")}
+              </button>
+            </div>
+            {importPreview && (
+              <div className="import-preview">
+                <div className="stat-grid">
+                  <div className="stat-card"><strong>{importPreview.total_rows}</strong><span>{t("rowsFound")}</span></div>
+                  <div className="stat-card"><strong>{importPreview.valid_count}</strong><span>{t("validProducts")}</span></div>
+                  <div className="stat-card"><strong>{importPreview.error_count}</strong><span>{t("importErrors")}</span></div>
+                </div>
+                {importPreview.sample?.length > 0 && (
+                  <div className="table-responsive">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>{t("product")}</th>
+                          <th>{t("supplierSku")}</th>
+                          <th>{t("category")}</th>
+                          <th>{t("price")}</th>
+                          <th>{t("cost")}</th>
+                          <th>{t("stock")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importPreview.sample.map((product, index) => (
+                          <tr key={`${product.supplier_product_id || product.name}-${index}`}>
+                            <td>{product.name}</td>
+                            <td>{product.supplier_product_id || "-"}</td>
+                            <td>{product.category || "-"}</td>
+                            <td>{product.price}</td>
+                            <td>{product.cost_price}</td>
+                            <td>{product.stock}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {importPreview.errors?.length > 0 && (
+                  <div className="error-message">
+                    {importPreview.errors.slice(0, 5).map((item) => (
+                      <div key={item.row}>{t("row")} {item.row}: {item.errors.join(" ")}</div>
+                    ))}
+                  </div>
+                )}
+                {!importPreview.dry_run && (
+                  <div className="form-status-success">
+                    {t("importCompleted")}: {importPreview.imported_count || 0} {t("imported")}, {importPreview.created_count || 0} {t("created")}, {importPreview.updated_count || 0} {t("updated")}, {importPreview.skipped_count || 0} {t("skipped")}
+                    {importPreview.duplicate_candidates_count ? `, ${importPreview.duplicate_candidates_count} ${t("duplicateCandidates")}` : ""}
+                  </div>
+                )}
+                {importPreview.dry_run && (
+                  <button className="primary-btn" type="button" disabled={importBusy || !importPreview.valid_count} onClick={commitImport}>
+                    {importBusy ? t("processing") : t("importProducts")}
+                  </button>
+                )}
+              </div>
+            )}
+            {importHistory.length > 0 && (
+              <div className="table-responsive">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>{t("file")}</th>
+                      <th>{t("rowsFound")}</th>
+                      <th>{t("validProducts")}</th>
+                      <th>{t("importErrors")}</th>
+                      <th>{t("imported")}</th>
+                      <th>{t("created")}</th>
+                      <th>{t("updated")}</th>
+                      <th>{t("skipped")}</th>
+                      <th>{t("duplicates")}</th>
+                      <th>{t("duration")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importHistory.map((batch) => (
+                      <tr key={batch.id}>
+                        <td>{batch.file_name}</td>
+                        <td>{batch.total_rows}</td>
+                        <td>{batch.valid_count}</td>
+                        <td>{batch.error_count}</td>
+                        <td>{batch.imported_count || 0}</td>
+                        <td>{batch.created_count || 0}</td>
+                        <td>{batch.updated_count || 0}</td>
+                        <td>{batch.skipped_count || 0}</td>
+                        <td>{batch.duplicate_candidates_count || 0}</td>
+                        <td>{formatDuration(batch.duration_ms)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         </div>
       )}
@@ -827,21 +1094,8 @@ export default function Suppliers() {
             onMouseDown={(event) => event.stopPropagation()}
           >
             <h2 id="supplier-delete-title">{t("deleteSupplier")}</h2>
+            <strong>{deleteSupplierTarget.company_name}</strong>
             <p>{t("deleteSupplierWarning")}</p>
-            <label className="field-group">
-              <span>
-                <input
-                  type="checkbox"
-                  checked={deleteImportedProducts}
-                  onChange={(event) => setDeleteImportedProducts(event.target.checked)}
-                  style={{ marginRight: 8 }}
-                />
-                {t("deleteImportedProducts")}
-              </span>
-              <small>
-                {t("deleteImportedProductsHint")}
-              </small>
-            </label>
             <div className="confirm-actions">
               <button className="secondary-btn" type="button" onClick={closeDeleteSupplier}>
                 {t("cancel")}

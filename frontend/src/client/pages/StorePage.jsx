@@ -21,7 +21,7 @@ export default function StorePage() {
     const list = products.filter((product) => {
       const matchesCategory = category === "all" || product.category === category;
       const matchesPrice = product.price <= maxPrice;
-      const text = [product.name, product.category, product.desc, product.specs.join(" ")].join(" ").toLowerCase();
+      const text = [product.name, product.category, product.desc, (product.specs || []).join(" ")].join(" ").toLowerCase();
       return matchesCategory && matchesPrice && text.includes(q);
     });
     if (sort === "priceAsc") return [...list].sort((a, b) => a.price - b.price);

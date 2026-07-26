@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import { env } from "../../config/env.js";
 import { createId, getCollection } from "../../db/mongo.js";
 import { notifyAdminLowStock } from "../notifications/notification.service.js";
+import { normalizeCountryCodes } from "../../utils/shipping-countries.js";
 
 const headerAliases = {
   name: ["name", "product", "product name", "title", "designation"],
@@ -26,6 +27,19 @@ const headerAliases = {
   height_cm: ["height", "height cm", "height_cm", "hauteur"],
   country_of_origin: ["country of origin", "origin", "country", "pays origine"],
   shipping_class: ["shipping class", "shipping_class", "classe livraison"],
+  ships_to_countries: [
+    "ships to",
+    "ships to countries",
+    "ships_to",
+    "ships_to_countries",
+    "available countries",
+    "available_countries",
+    "shipping countries",
+    "shipping_countries",
+    "countries",
+    "pays livraison",
+    "pays disponibles"
+  ],
   vat_rate: ["vat", "vat rate", "vat_rate", "tax", "tax rate", "tva"],
   specs: ["specs", "specifications", "attributes", "features"],
   images: ["images", "image", "image urls", "image_urls", "photo", "photos"]
@@ -220,6 +234,7 @@ function mapRow(row) {
     height_cm: toNumber(get("height_cm"), 0),
     country_of_origin: String(get("country_of_origin") || "").trim(),
     shipping_class: String(get("shipping_class") || "standard").trim().toLowerCase(),
+    ships_to_countries: normalizeCountryCodes(splitList(get("ships_to_countries"))),
     vat_rate: toNumber(get("vat_rate"), 0),
     warranty: String(get("warranty") || "").trim(),
     lead: String(get("lead") || "").trim(),
@@ -282,6 +297,11 @@ export async function importSupplierProducts({ supplierId, fileName, contentBase
     error.status = 404;
     throw error;
   }
+  if (supplier.status === "Inactive") {
+    const error = new Error("Supplier is inactive. Activate it before importing products.");
+    error.status = 400;
+    throw error;
+  }
 
   const preview = await previewSupplierProductImport({ fileName, contentBase64, contentText });
   if (dryRun) return { ...preview, dry_run: true };
@@ -335,6 +355,11 @@ export async function importSupplierProducts({ supplierId, fileName, contentBase
 
     const categoryId = await ensureCategoryId(row.category);
     const id = existing?.id || `${slugify(row.name) || "import-product"}-${String(supplierId).slice(0, 8)}-${supplierProductId}`.slice(0, 90);
+    const productShipsTo = normalizeCountryCodes(row.ships_to_countries);
+    const shipsToOverride = productShipsTo.length > 0;
+    const shipsToCountries = shipsToOverride
+      ? productShipsTo
+      : normalizeCountryCodes(supplier.ships_to_countries);
 
     const result = await products.updateOne(
       { supplier_id: supplierId, supplier_product_id: supplierProductId },
@@ -371,6 +396,8 @@ export async function importSupplierProducts({ supplierId, fileName, contentBase
           visibility: "visible",
           featured: false,
           shipping_class: row.shipping_class || "standard",
+          ships_to_countries: shipsToCountries,
+          ships_to_override: shipsToOverride,
           seo_title: row.name,
           seo_description: row.description || "",
           slug: slugify(row.name) || id,
@@ -417,7 +444,16 @@ export async function importSupplierProducts({ supplierId, fileName, contentBase
       }
     }
   );
-  await suppliers.updateOne({ id: supplierId }, { $set: { products_count: await products.countDocuments({ supplier_id: supplierId, active: true }), updated_at: new Date() } });
+  await suppliers.updateOne(
+    { id: supplierId },
+    {
+      $set: {
+        products_count: await products.countDocuments({ supplier_id: supplierId, active: true }),
+        last_sync_at: new Date(),
+        updated_at: new Date()
+      }
+    }
+  );
 
   return {
     ...preview,

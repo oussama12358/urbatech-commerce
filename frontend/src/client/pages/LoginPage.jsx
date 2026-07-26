@@ -66,13 +66,15 @@ export default function LoginPage() {
       await login({ ...json.user, token: json.token }, { remember: rememberMe });
       navigate(resolveAfterLogin(json.user, location.state?.next), { replace: true });
     } catch (err) {
-      // Handle email verification required error
+      // Handle email verification required or disabled account errors
       if (err.message?.includes("Email not verified")) {
         if (!settings?.disableEmailVerification) {
           setError(t("emailNotVerified"));
         } else {
           setError(err.message || t("loginFailed"));
         }
+      } else if (err.message?.includes("Account disabled")) {
+        setError(t("accountDisabled"));
       } else {
         setError(err.message || t("loginFailed"));
       }

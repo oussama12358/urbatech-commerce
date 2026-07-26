@@ -96,6 +96,7 @@ export default function CustomerDetails() {
               <div className="kv-row"><span>{t("name")}</span><strong>{displayName}</strong></div>
               <div className="kv-row"><span>{t("email")}</span><strong>{customer.email || "-"}</strong></div>
               <div className="kv-row"><span>{t("phone")}</span><strong>{customer.phone?.trim() || "-"}</strong></div>
+              <div className="kv-row"><span>{t("country")}</span><strong>{customer.country || customer.country_code || "-"}</strong></div>
               <div className="kv-row"><span>{t("status")}</span><strong>{customer.status || "active"}</strong></div>
               <div className="kv-row"><span>{t("address")}</span><strong>{savedAddress || "-"}</strong></div>
               <div className="kv-row"><span>{t("joined")}</span><strong>{formatDate(customer.created_at)}</strong></div>

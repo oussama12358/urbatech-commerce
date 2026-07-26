@@ -4,6 +4,11 @@ import { getCollection } from "../../db/mongo.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { notifyCustomerOrderConfirmed } from "../notifications/notification.service.js";
 import { releaseStockForItems, reserveStockForItems } from "./inventory.service.js";
+import {
+  checkProductAvailabilityInCountry,
+  countryName,
+  toCountryCode
+} from "../../utils/shipping-countries.js";
 
 const orderSchema = z.object({
   billing: z.record(z.any()).default({}),
@@ -76,8 +81,9 @@ function serializeOrder(order, items = [], { includeInternal = false } = {}) {
   return serialized;
 }
 
-async function buildTrustedOrderItems(payloadItems) {
+async function buildTrustedOrderItems(payloadItems, billing = {}) {
   const products = await getCollection("products");
+  const suppliers = await getCollection("suppliers");
   const quantities = new Map();
   for (const item of payloadItems) {
     quantities.set(item.id, (quantities.get(item.id) || 0) + item.qty);
@@ -92,6 +98,34 @@ async function buildTrustedOrderItems(payloadItems) {
     const error = new Error(`Unavailable product: ${missing[0]}`);
     error.status = 400;
     throw error;
+  }
+
+  const supplierIds = [...new Set(productRows.map((product) => product.supplier_id).filter(Boolean))];
+  const supplierRows = supplierIds.length
+    ? await suppliers.find({ id: { $in: supplierIds } }).toArray()
+    : [];
+  const supplierMap = new Map(supplierRows.map((supplier) => [supplier.id, supplier]));
+
+  const countryInput = billing.country_code || billing.countryCode || billing.country || "";
+  const destinationCode = toCountryCode(countryInput);
+
+  for (const product of productRows) {
+    const supplier = product.supplier_id ? supplierMap.get(product.supplier_id) : null;
+    const availability = checkProductAvailabilityInCountry(product, supplier, {
+      country: billing.country,
+      country_code: billing.country_code || billing.countryCode || destinationCode
+    });
+    if (!availability.shipsWorldwide && !availability.available) {
+      const countryLabel = countryName(availability.countryCode) || billing.country || "your country";
+      const error = new Error(
+        `"${product.name}" is not available in ${countryLabel}. This product cannot be shipped to your country.`
+      );
+      error.status = 400;
+      error.code = "NOT_AVAILABLE_IN_COUNTRY";
+      error.product_id = product.id;
+      error.country_code = availability.countryCode;
+      throw error;
+    }
   }
 
   let subtotal = 0;
@@ -114,7 +148,7 @@ async function buildTrustedOrderItems(payloadItems) {
 
     return {
       order_id: null,
-      product_id,
+      product_id: productId,
       name: product.name,
       quantity,
       unit_price: unitPrice,
@@ -195,7 +229,7 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
   try {
     const payload = orderSchema.parse(req.body);
     const billing = payload.billing || {};
-    const trusted = await buildTrustedOrderItems(payload.items);
+    const trusted = await buildTrustedOrderItems(payload.items, billing);
     const subtotal = trusted.subtotal;
     const service = roundMoney(subtotal * 0.03);
     const shipping = subtotal ? 120 : 0;
@@ -252,8 +286,9 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
       if (billing?.address) customerUpdateFields.address = billing.address;
       if (billing?.city) customerUpdateFields.city = billing.city;
       if (billing?.country) customerUpdateFields.country = billing.country;
+      if (billing?.country_code) customerUpdateFields.country_code = billing.country_code;
       if (billing?.postalCode) customerUpdateFields.postalCode = billing.postalCode;
-      if (billing?.phone || billing?.address) {
+      if (Object.keys(customerUpdateFields).length > 0) {
         await customers.updateOne(
           { id: customerId },
           { $set: customerUpdateFields }

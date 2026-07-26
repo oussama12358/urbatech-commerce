@@ -12,11 +12,11 @@ export default function ProductTable({ products, onDelete }) {
     return t("sourceInternal");
   };
 
-  const supplierStatusLabel = (status) => {
-    if (status === "inactive") return t("inactive");
+  const supplierStatusLabel = (status, stock) => {
+    if (typeof stock === "number" && stock <= 0) return t("outOfStock");
     if (status === "discontinued") return t("discontinued");
     if (status === "out_of_stock") return t("outOfStock");
-    return t("active");
+    return "";
   };
 
   const formatLastSync = (timestamp) => {
@@ -52,7 +52,7 @@ export default function ProductTable({ products, onDelete }) {
             <td>{product.name}</td>
             <td>{product.sku || "-"}</td>
             <td>{sourceLabel(product.product_source, product.supplier_id)}</td>
-            <td>{supplierStatusLabel(product.supplier_status)}</td>
+            <td>{supplierStatusLabel(product.supplier_status, product.stock)}</td>
             <td>{formatLastSync(product.supplier_last_sync_at)}</td>
             <td>{product.supplier_product_id || "-"}</td>
             <td>{product.category}</td>
