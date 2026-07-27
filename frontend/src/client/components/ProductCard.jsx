@@ -14,7 +14,6 @@ import {
 
 function translateProductStatus(status) {
   if (!status) return "";
-  if (status === "Quote ready") return status;
   if (status === "In stock") return t("inStock");
   if (status === "Available") return t("available");
   if (status === "Low stock") return t("lowStock");
@@ -53,11 +52,10 @@ export default function ProductCard({ product }) {
     if (notAvailableInCountry) return t("notAvailableInYourCountry");
     if (isUnknownInCountry) return t("checkAvailabilityInCountry");
     if (isOutOfStock) return t("outOfStock");
-    if (["Active", "Inactive", "Draft"].includes(product.status)) {
+    if (["Draft"].includes(product.status)) {
       return typeof product.stock === "number" && product.stock > 0 ? t("inStock") : t("notAvailableYet");
     }
-    // Avoid showing legacy 'Quote ready' badge — prefer stock-based or existing status
-    if (product.status && product.status !== "Quote ready") return translateProductStatus(product.status);
+    if (product.status) return translateProductStatus(product.status);
     if (typeof product.stock === "number" && product.stock > 0) return t("inStock");
     return t("notAvailableYet");
   })();

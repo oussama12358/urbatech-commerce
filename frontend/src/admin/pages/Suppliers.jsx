@@ -291,11 +291,20 @@ export default function Suppliers() {
     return "disconnected";
   };
 
+  const getStatusLabel = (status) => {
+    const s = String(status || "").toLowerCase();
+    if (s === "connected" || s === "active") return t("active");
+    if (s === "syncing") return t("syncing");
+    if (s === "inactive") return t("inactive");
+    if (s === "disconnected") return t("disconnected");
+    return status || t("disconnected");
+  };
+
   const renderStatus = (status) => {
-    const value = status || t("disconnected");
+    const label = getStatusLabel(status);
     return (
-      <span className={`status-pill ${statusVariant(value)}`}>
-        {value}
+      <span className={`status-pill ${statusVariant(status)}`}>
+        {label}
       </span>
     );
   };
@@ -850,7 +859,7 @@ export default function Suppliers() {
               </div>
               <div>
                 <strong>{t("status")}</strong>
-                <p>{detailsSupplier.status || t("disconnected")}</p>
+                <p>{getStatusLabel(detailsSupplier.status)}</p>
               </div>
               <div>
                 <strong>{t("apiHealth")}</strong>

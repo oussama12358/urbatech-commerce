@@ -5,6 +5,7 @@ import SummaryBox from "../components/SummaryBox.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
 import { money } from "../../shared/lib/format.js";
 import { t, useLocale } from "../../i18n.js";
+import { showToast } from "../../shared/lib/toast.js";
 import { getCountryByCode } from "../../shared/lib/countries.js";
 import {
   getProductShipsTo,
@@ -77,9 +78,10 @@ export default function CartPage() {
               {t("selectValidCountry")}
             </div>
           ) : null}
-          {cartLines.length ? cartLines.map((line) => {
+            {cartLines.length ? cartLines.map((line) => {
             const unavailable = shipCountry && isProductAvailableInCountry(line, shipCountry).available === false;
             const outOfStock = typeof line.stock === "number" && line.stock <= 0;
+            const atLimit = typeof line.stock === "number" && line.qty >= line.stock;
             return (
               <div className={`cart-line ${unavailable || outOfStock ? "cart-line-unavailable" : ""}`} key={line.id}>
                 <div className="mini">{line.category.slice(0, 2).toUpperCase()}</div>
@@ -90,7 +92,30 @@ export default function CartPage() {
                     {outOfStock ? ` · ${t("outOfStock")}` : unavailable ? ` · ${t("notAvailableInYourCountry")}` : ""}
                   </p>
                 </div>
-                <div className="qty"><button onClick={() => changeQty(line.id, -1)}>-</button><span>{line.qty}</span><button onClick={() => changeQty(line.id, 1)}>+</button></div>
+                <div className="qty">
+                  <button onClick={() => changeQty(line.id, -1)}>-</button>
+                  <span>{line.qty}</span>
+                  <button
+                    onClick={() => {
+                      if (atLimit) {
+                        showToast(t("onlyXLeftInStock").replace("{count}", String(line.stock)), "error");
+                        return;
+                      }
+                      changeQty(line.id, 1);
+                    }}
+                    aria-disabled={atLimit}
+                    className={atLimit ? "disabled" : ""}
+                    title={atLimit ? t("onlyXLeftInStock").replace("{count}", String(line.stock)) : ""}
+                    tabIndex={atLimit ? -1 : 0}
+                  >
+                    +
+                  </button>
+                  {typeof line.stock === "number" && line.stock > 0 ? (
+                    <div className="stock-remaining" style={{ fontSize: 12, color: '#9aa3ad', marginLeft: 8 }}>
+                      {t("inStock")}: {line.stock}
+                    </div>
+                  ) : null}
+                </div>
                 <strong>{money(line.price * line.qty)}</strong>
               </div>
             );

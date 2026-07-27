@@ -2,9 +2,11 @@ import { Link } from "react-router-dom";
 import { Pencil, Trash2 } from "lucide-react";
 import { money } from "../../shared/lib/format.js";
 import { t, useLocale } from "../../i18n.js";
+import { useStore } from "../../store/StoreContext.jsx";
 
 export default function ProductTable({ products, onDelete }) {
   useLocale();
+  const { suppliers } = useStore();
   const sourceLabel = (source, supplierId) => {
     const value = source || (supplierId ? "api" : "internal");
     if (value === "api") return t("sourceApi");
@@ -14,9 +16,28 @@ export default function ProductTable({ products, onDelete }) {
 
   const supplierStatusLabel = (status, stock) => {
     if (typeof stock === "number" && stock <= 0) return t("outOfStock");
-    if (status === "discontinued") return t("discontinued");
-    if (status === "out_of_stock") return t("outOfStock");
+    const s = String(status || "").toLowerCase();
+    if (s === "discontinued") return t("discontinued");
+    if (s === "out_of_stock" || s === "outofstock") return t("outOfStock");
+    if (s === "active") return t("active");
+    if (s === "inactive") return t("inactive");
     return "";
+  };
+
+  const supplierStatusVariant = (status, stock) => {
+    const s = String(status || "").toLowerCase();
+    if (typeof stock === "number" && stock <= 0) return "disconnected";
+    if (s === "active") return "connected";
+    return "disconnected";
+  };
+
+  const supplierConnectionLabel = (supplierId) => {
+    if (!supplierId) return "";
+    const s = (suppliers || []).find((x) => x.id === supplierId);
+    if (!s) return "";
+    const health = String(s.api_health || s.status || "").toLowerCase();
+    if (health.includes("online") || health.includes("connected") || health.includes("ok")) return t("connected");
+    return t("disconnected");
   };
 
   const formatLastSync = (timestamp) => {
@@ -52,7 +73,14 @@ export default function ProductTable({ products, onDelete }) {
             <td>{product.name}</td>
             <td>{product.sku || "-"}</td>
             <td>{sourceLabel(product.product_source, product.supplier_id)}</td>
-            <td>{supplierStatusLabel(product.supplier_status, product.stock)}</td>
+            <td>
+              {(() => {
+                const statusText = supplierStatusLabel(product.supplier_status, product.stock);
+                if (!statusText) return "";
+                const variant = supplierStatusVariant(product.supplier_status, product.stock);
+                return <span className={`status-pill ${variant}`}>{statusText}</span>;
+              })()}
+            </td>
             <td>{formatLastSync(product.supplier_last_sync_at)}</td>
             <td>{product.supplier_product_id || "-"}</td>
             <td>{product.category}</td>

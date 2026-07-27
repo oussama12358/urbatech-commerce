@@ -142,6 +142,9 @@ function serializeProduct(product, categoryName = null, includeInternal = false,
     ships_worldwide: !shipsTo || shipsTo.length === 0
   };
 
+  // Always include supplier_status in the serialized product (default to "active")
+  serialized.supplier_status = product.supplier_status || "active";
+
   if (includeInternal) {
     serialized.cost_price = product.cost_price || 0;
     serialized.margin = product.margin || 0;
@@ -150,7 +153,6 @@ function serializeProduct(product, categoryName = null, includeInternal = false,
     serialized.supplier_product_id = product.supplier_product_id || "";
     serialized.product_source = product.product_source || (product.supplier_id ? "api" : "internal");
     serialized.import_batch_id = product.import_batch_id || null;
-    serialized.supplier_status = product.supplier_status || "active";
     serialized.supplier_last_sync_at = product.supplier_last_sync_at || null;
     serialized.mpn = product.mpn || "";
     serialized.dedupe_key = product.dedupe_key || "";

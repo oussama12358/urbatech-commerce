@@ -16,7 +16,6 @@ import {
 
 function translateProductStatus(status) {
   if (!status) return "";
-  if (status === "Quote ready") return status;
   if (status === "In stock") return t("inStock");
   if (status === "Available") return t("available");
   if (status === "Low stock") return t("lowStock");

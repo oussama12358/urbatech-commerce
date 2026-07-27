@@ -11,14 +11,14 @@ export default function Dashboard() {
   const [category, setCategory] = useState("All");
   const [status, setStatus] = useState("All");
   const revenue = orders.reduce((sum, order) => sum + order.total, 0);
-  const statuses = useMemo(() => ["All", ...new Set(products.map((product) => product.status).filter(Boolean))], [products]);
+  // Use a fixed stock filter to match admin Products page: All / In stock / Low / Out
+  const statuses = ["All", "In stock", "Low", "Out"];
 
   const translateStatus = (status) => {
-    if (status === "All") return t("allStatuses");
+    if (status === "All") return t("allStock");
     if (status === "In stock") return t("inStockStatus");
-    if (status === "Low stock") return t("lowStockStatus");
-    if (status === "Out of stock") return t("outOfStockStatus");
-    if (status === "Preorder") return t("preorderStatus");
+    if (status === "Low") return t("lowStock");
+    if (status === "Out") return t("outOfStock");
     return status;
   };
 
@@ -27,7 +27,11 @@ export default function Dashboard() {
     return products.filter((product) => {
       const matchesQuery = !q || [product.name, product.category, product.status].join(" ").toLowerCase().includes(q);
       const matchesCategory = category === "All" || product.category === category;
-      const matchesStatus = status === "All" || product.status === status;
+      const matchesStatus =
+        status === "All" ||
+        (status === "In stock" && product.stock > 0) ||
+        (status === "Low" && product.stock > 0 && product.stock <= 10) ||
+        (status === "Out" && (typeof product.stock === "number" ? product.stock === 0 : false));
       return matchesQuery && matchesCategory && matchesStatus;
     });
   }, [category, products, query, status]);

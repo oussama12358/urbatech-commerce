@@ -46,6 +46,7 @@ export default function Products() {
     });
   }, [category, products, query, source, stock, supplierFilter]);
 
+
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     await deleteProduct(pendingDelete.id);

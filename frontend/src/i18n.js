@@ -167,6 +167,7 @@ const locales = {
     goToLogin: "Go to Login",
     inCart: "In cart",
     inStock: "In stock",
+    onlyXLeftInStock: "Only {count} left in stock",
     leadTime: "Lead time",
     liveSupportAvailable: "Live support available",
     loginFailed: "Login failed",
@@ -236,6 +237,7 @@ const locales = {
     footerCopyright: "© 2026 URBA TECH INTER. All rights reserved. International Engineering & Tutorial Consulting.",
     adminDashboard: "Dashboard",
     adminSuppliers: "Suppliers",
+    connected: "Connected",
     adminSettlements: "Settlements",
     supplierPayouts: "Supplier payouts",
     settlements: "Settlements",
@@ -343,6 +345,7 @@ const locales = {
     cost: "Cost",
     stock: "Stock",
     margin: "Margin",
+    supplierActive: "Available",
     adminNavigation: "Admin navigation",
     category: "Category",
     dispatchError: "Dispatch error",
@@ -570,6 +573,7 @@ const locales = {
     saveShipsToCountries: "Save shipping countries",
     accountDisabled: "Account Disabled",
     supplier_id: "Supplier Id",
+    syncing: "Syncing",
 },
   fr: {
     products: "Produits",
@@ -736,6 +740,7 @@ const locales = {
     goToLogin: "Aller à la connexion",
     inCart: "Dans le panier",
     inStock: "En stock",
+    onlyXLeftInStock: "Seulement {count} restant en stock",
     leadTime: "Délai",
     loginFailed: "Échec de la connexion",
     newPasswordPlaceholder: "Nouveau mot de passe",
@@ -881,6 +886,7 @@ const locales = {
     fulfillmentRate: "Taux de réalisation",
     activeProducts: "Produits actifs",
     connectedSuppliers: "Fournisseurs connectés",
+    connected: "Connecté",
     payoutPending: "Versement en attente",
     payoutPaid: "Versement payé",
     payoutHeld: "Versement retenu",
@@ -1099,6 +1105,8 @@ const locales = {
     duplicateCandidates: "doublons possibles",
     duration: "Durée",
     supplierStatus: "Statut du fournisseur",
+    supplierActive: "Disponible",
+    syncing: "Synchronisation",
     discontinued: "Arrêté",
     draft: "Brouillon",
     visible: "Visible",
@@ -1308,6 +1316,7 @@ const locales = {
     goToLogin: "اذهب إلى تسجيل الدخول",
     inCart: "في السلة",
     inStock: "متوفر",
+      onlyXLeftInStock: "يتبقى {count} فقط في المخزون",
     leadTime: "مدة التسليم",
     loginFailed: "فشل تسجيل الدخول",
     newPasswordPlaceholder: "كلمة المرور الجديدة",
@@ -1599,6 +1608,7 @@ const locales = {
     deleteSupplier: "حذف المورد",
     noSuppliersConnectedYet: "لا يوجد موردون متصلون بعد.",
     connectYourFirstSupplierLead: "قم بتوصيل المورد الأول لبدء مزامنة المنتجات والطلبات.",
+    connected: "متصل",
     disconnected: "غير متصل",
     unknown: "غير معروف",
     healthy: "سليم",
@@ -1671,6 +1681,8 @@ const locales = {
     duplicateCandidates: "تكرارات محتملة",
     duration: "المدة",
     supplierStatus: "حالة المورد",
+    supplierActive: "متوفر",
+    syncing: "جاري المزامنة",
     discontinued: "متوقف",
     draft: "مسودة",
     visible: "ظاهر",
@@ -1732,8 +1744,7 @@ function detectLocale() {
     // ignore
   }
 
-  const nav = navigator.language?.slice(0, 2);
-  if (nav && locales[nav]) return nav;
+  // Default to English unless the user explicitly selected another locale.
   return "en";
 }
 

@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { readStorage, writeStorage } from "../shared/lib/storage.js";
 import { createApiClient } from "../shared/lib/api.js";
+import { showToast } from "../shared/lib/toast.js";
+import { t } from "../i18n.js";
 import {
   getProductShipsTo,
   isProductAvailableInCountry,
@@ -92,8 +94,21 @@ export function StoreProvider({ children }) {
           api("/settings"),
           api("/payments")
         ]);
+        function sanitizeProducts(list) {
+          if (!Array.isArray(list)) return [];
+          return list.map((p) => {
+            const statusRaw = String(p?.status || "").trim();
+            const isLegacy = ["active", "inactive"].includes(statusRaw.toLowerCase());
+            return {
+              ...p,
+              // remove legacy status text entirely
+              status: isLegacy ? "" : p.status
+            };
+          });
+        }
+
         if (productsJson?.data && mounted) {
-          setProductsState(productsJson.data);
+          setProducts(sanitizeProducts(productsJson.data));
         }
         if (categoriesJson?.data && mounted) {
           setCategoriesState(categoriesJson.data);
@@ -299,7 +314,14 @@ export function StoreProvider({ children }) {
   };
 
   const setProducts = (next) => {
-    setProductsState(next);
+    const sanitized = Array.isArray(next)
+      ? next.map((p) => {
+          const statusRaw = String(p?.status || "").trim();
+          const isLegacy = ["active", "inactive"].includes(statusRaw.toLowerCase());
+          return { ...p, status: isLegacy ? "" : p.status };
+        })
+      : next;
+    setProductsState(sanitized);
   };
 
   const setCategories = (next) => {
@@ -366,16 +388,36 @@ export function StoreProvider({ children }) {
     if (product && (availability.available === false || (availability.available === null && needsCountryCheck))) {
       return;
     }
-    if (cart[id]) {
-      return;
+    const existingQty = Number(cart[id] || 0);
+    const desired = Number(qty || 0) + existingQty;
+    // If product has a numeric stock, cap desired quantity to available stock
+    const capped = product && typeof product.stock === "number" ? Math.max(0, Math.min(desired, Number(product.stock))) : Math.max(0, desired);
+    if (capped <= 0) return;
+    if (capped === existingQty) return;
+    // Inform user if we capped their requested quantity due to stock limits
+    if (product && typeof product.stock === "number" && capped < desired) {
+      showToast(`${product.name} — ${t("onlyXLeftInStock").replace("{count}", String(product.stock))}`, "error");
     }
-    setCart({ ...cart, [id]: qty });
+    setCart({ ...cart, [id]: capped });
   };
 
   const changeQty = (id, delta) => {
-    const next = { ...cart, [id]: (cart[id] || 0) + delta };
-    if (next[id] <= 0) delete next[id];
-    setCart(next);
+    const product = products.find((p) => p.id === id);
+    const current = Number(cart[id] || 0);
+    let nextQty = Number(current + delta || 0);
+    if (nextQty <= 0) {
+      const next = { ...cart };
+      delete next[id];
+      setCart(next);
+      return;
+    }
+    if (product && typeof product.stock === "number") {
+      if (nextQty > Number(product.stock)) {
+        showToast(`${product.name} — ${t("onlyXLeftInStock").replace("{count}", String(product.stock))}`, "error");
+        nextQty = Number(product.stock);
+      }
+    }
+    setCart({ ...cart, [id]: nextQty });
   };
 
   const clearCart = () => setCart({});
@@ -422,6 +464,13 @@ export function StoreProvider({ children }) {
     }
 
     if (options.clearCartAfterCreate !== false) {
+      // Refresh product list to reflect decremented stock, then clear cart
+      try {
+        const productsJson = await api("/products");
+        if (productsJson?.data) setProducts(productsJson.data);
+      } catch (err) {
+        // ignore product refresh errors
+      }
       clearCart();
     }
     return json.data;
