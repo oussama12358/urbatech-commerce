@@ -21,7 +21,7 @@ export default function Sidebar() {
   return (
     <aside className="admin-sidebar">
       <NavLink className="brand admin-brand" to="/admin/dashboard">
-        <span className="brand-mark">U</span>
+        <span className="brand-mark">UTI</span>
         <span className="brand-text">
           URBA TECH <span>INTER</span>
         </span>

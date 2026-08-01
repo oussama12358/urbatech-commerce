@@ -119,7 +119,7 @@ export default function SignupPage() {
         <section className="auth-card">
           <div className="auth-header">
             <Link className="brand" to="/store">
-              <span className="brand-mark">U</span>
+              <span className="brand-mark">UTI</span>
               <span className="brand-text">URBA TECH <span>INTER</span></span>
             </Link>
             <h1>{t("verifyYourEmail")}</h1>
@@ -166,7 +166,7 @@ export default function SignupPage() {
     <main className="auth-shell">
       <section className="auth-card">
         <div className="auth-header">
-          <Link className="brand" to="/store"><span className="brand-mark">U</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
+          <Link className="brand" to="/store"><span className="brand-mark">UTI</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
           <div>
             <h1>{t("createAccount")}</h1>
             <p>{t("signUpText")}</p>

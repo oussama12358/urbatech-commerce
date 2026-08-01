@@ -93,7 +93,7 @@ export default function LoginPage() {
     <main className="auth-shell">
       <section className="auth-card">
         <div className="auth-header">
-          <Link className="brand" to="/store"><span className="brand-mark">U</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
+          <Link className="brand" to="/store"><span className="brand-mark">UTI</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
           <p>{t("accessAccountText")}</p>
         </div>
         {error && <div className="error-message" style={{ color: "#ffb3b3", marginBottom: "12px", fontSize: "14px" }}>{error}</div>}

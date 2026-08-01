@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Check, FileText, ShoppingCart } from "lucide-react";
 import ProductArt from "../components/ProductArt.jsx";
+import Loading from "../../shared/components/Loading.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
+import { createApiClient } from "../../shared/lib/api.js";
 import { money } from "../../shared/lib/format.js";
 import { t, useLocale } from "../../i18n.js";
 import COUNTRIES, { getCountryByCode } from "../../shared/lib/countries.js";
@@ -28,12 +30,50 @@ export default function ProductPage() {
   useLocale();
   const { id } = useParams();
   const navigate = useNavigate();
-  const { products, addToCart, cart, user, updateProfile } = useStore();
-  const product = products.find((item) => item.id === id);
+  const { products, productsLoading, addToCart, cart, user, updateProfile } = useStore();
+  const [product, setProduct] = useState(() => products.find((item) => item.id === id) || null);
+  const [directProductLoading, setDirectProductLoading] = useState(false);
+  const [directProductTried, setDirectProductTried] = useState(false);
   const isInCart = Boolean(product && cart[product.id]);
   const [shipCountryCode, setShipCountryCode] = useState(() => {
     return user?.country_code || readStoredShippingCountryCode();
   });
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [id]);
+
+  useEffect(() => {
+    const matchedProduct = products.find((item) => item.id === id);
+    if (matchedProduct) {
+      setProduct(matchedProduct);
+      setDirectProductTried(false);
+      return;
+    }
+
+    setProduct(null);
+    setDirectProductTried(false);
+  }, [id, products]);
+
+  useEffect(() => {
+    if (product || directProductLoading || directProductTried) return;
+
+    setDirectProductLoading(true);
+    const api = createApiClient(user?.token);
+    api(`/products/${encodeURIComponent(id)}`)
+      .then((json) => {
+        if (json?.data) {
+          setProduct(json.data);
+        }
+      })
+      .catch(() => {
+        // no-op
+      })
+      .finally(() => {
+        setDirectProductLoading(false);
+        setDirectProductTried(true);
+      });
+  }, [id, product, directProductLoading, directProductTried, user?.token]);
 
   const selectedShipCountry = useMemo(
     () => (shipCountryCode ? getCountryByCode(shipCountryCode) : null),
@@ -58,18 +98,9 @@ export default function ProductPage() {
     ? t("checkAvailabilityInCountry")
     : t("inStock");
 
-  if (!product) {
-    return (
-      <main className="main">
-        <div className="empty">{t("productNotFound")}</div>
-      </main>
-    );
-  }
-
-  // Initialize/override selected ship country from user profile when profile country changes.
-  // Do not react to local `shipCountryCode` changes to avoid re-setting a cleared selection.
+  // This must stay before the loading return: after a hard refresh the product
+  // loads asynchronously, and React hooks must be called in the same order.
   useEffect(() => {
-    // If an authenticated user exists, prefer their profile country (or clear) and do not subscribe to guest updates.
     if (user) {
       if (user.country_code) {
         const profileCountry = getCountryByCode(user.country_code);
@@ -83,6 +114,22 @@ export default function ProductPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  if (!product) {
+    if (productsLoading || directProductLoading) {
+      return <Loading label={t("loading")} />;
+    }
+
+    if (directProductTried) {
+      return (
+        <main className="main">
+          <div className="empty">{t("productNotFound")}</div>
+        </main>
+      );
+    }
+
+    return <Loading label={t("loading")} />;
+  }
 
   const onShipCountryChange = async (event) => {
     const code = event.target.value;
@@ -107,11 +154,18 @@ export default function ProductPage() {
   const handleBuyNow = () => {
     if (notAvailableInCountry || isOutOfStock) return;
     if (needsCountryCheck && !selectedShipCountry) {
-      navigate(`/product/${product.id}`);
       return;
     }
     if (!isInCart) addToCart(product.id);
     navigate("/checkout");
+  };
+
+  const goBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/store");
+    }
   };
 
   return (
@@ -124,8 +178,21 @@ export default function ProductPage() {
           </span>
         </div>
         <section className="panel">
-          <div className="category">{product.category}</div>
-          <h1>{product.name}</h1>
+          <div style={{ marginBottom: 14 }}>
+            <button
+              className="secondary-btn compact-btn"
+              type="button"
+              onClick={goBack}
+              aria-label={t("back")}
+            >
+              <span aria-hidden="true" style={{ marginRight: 6 }}>←</span>
+              {t("back")}
+            </button>
+          </div>
+          <div>
+            <div className="category">{product.category}</div>
+            <h1>{product.name}</h1>
+          </div>
           <p className="lead">{product.desc}</p>
           <div className="kv">
             <div className="kv-row"><span>{t("price")}</span><strong>{money(product.price)}</strong></div>
@@ -173,15 +240,15 @@ export default function ProductPage() {
           {product.long_description && <p className="page-copy">{product.long_description}</p>}
           <div className="card-actions" style={{ marginTop: 18 }}>
             <button
-            className="primary-btn"
-            disabled={
-              isInCart ||
-              notAvailableInCountry ||
-              isOutOfStock ||
-              (needsCountryCheck && !selectedShipCountry)
-            }
-            onClick={handleAdd}
-          >
+              className="primary-btn"
+              disabled={
+                isInCart ||
+                notAvailableInCountry ||
+                isOutOfStock ||
+                (needsCountryCheck && !selectedShipCountry)
+              }
+              onClick={handleAdd}
+            >
               {isInCart ? <Check /> : <ShoppingCart />}
               {isInCart
                 ? t("inCart")

@@ -35,6 +35,7 @@ export function StoreProvider({ children }) {
   const [cart, setCartState] = useState(() => readStorage(KEYS.cart, {}));
   const [orders, setOrdersState] = useState(() => readStorage(KEYS.orders, []));
   const [products, setProductsState] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
   const [categories, setCategoriesState] = useState([]);
   const [suppliers, setSuppliersState] = useState([]);
   const [settings, setSettingsState] = useState({ storefrontEnabled: true });
@@ -86,6 +87,7 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     let mounted = true;
     const load = async () => {
+      if (mounted) setProductsLoading(true);
       try {
         const api = createApiClient(user?.token);
         const [productsJson, categoriesJson, settingsJson, paymentProvidersJson] = await Promise.all([
@@ -124,6 +126,8 @@ export function StoreProvider({ children }) {
         localStorage.removeItem(KEYS.categories);
         localStorage.removeItem(KEYS.settings);
         localStorage.removeItem(KEYS.paymentProviders);
+      } finally {
+        if (mounted) setProductsLoading(false);
       }
     };
     load();
@@ -713,6 +717,7 @@ export function StoreProvider({ children }) {
     login: persistUser,
     logout: () => persistUser(null),
     products,
+    productsLoading,
     categories,
     suppliers,
     settings,

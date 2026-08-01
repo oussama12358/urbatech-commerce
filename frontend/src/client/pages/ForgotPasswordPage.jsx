@@ -35,7 +35,7 @@ export default function ForgotPasswordPage() {
     <main className="auth-shell">
       <section className="auth-card">
         <div className="auth-header">
-          <Link className="brand" to="/store"><span className="brand-mark">U</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
+          <Link className="brand" to="/store"><span className="brand-mark">UTI</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
           <div>
             <h1>{t("forgotPasswordTitle")}</h1>
             <p>{t("forgotPasswordLead")}</p>

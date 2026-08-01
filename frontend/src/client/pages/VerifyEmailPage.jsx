@@ -52,7 +52,7 @@ export default function VerifyEmailPage() {
       <section className="auth-card">
         <div className="auth-header">
           <Link className="brand" to="/store">
-            <span className="brand-mark">U</span>
+            <span className="brand-mark">UTI</span>
             <span className="brand-text">
               URBA TECH <span>INTER</span>
             </span>

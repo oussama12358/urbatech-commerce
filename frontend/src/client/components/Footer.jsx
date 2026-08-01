@@ -19,7 +19,7 @@ export default function Footer() {
       <div className="footer-grid">
         <div className="footer-col brand-col">
           <div className="brand-footer">
-            <span className="brand-mark">U</span>
+            <span className="brand-mark">UTI</span>
             <div>
               <strong>URBA TECH</strong>
               <p>INTER</p>

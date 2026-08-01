@@ -80,8 +80,17 @@ export default function ProductCard({ product }) {
   };
 
   return (
-    <article className="card product-card" onClick={openDetails}>
-        <Link className="product-media" to={`/product/${product.id}`} aria-label={product.name}>
+    <article
+      className="card product-card"
+      onClick={openDetails}
+      title={t("clickForMoreDetails")}
+    >
+        <Link
+        className="product-media"
+        to={`/product/${product.id}`}
+        aria-label={product.name}
+        onClick={(event) => event.stopPropagation()}
+      >
         <ProductArt product={product} />
         <span className={`badge ${notAvailableInCountry ? "badge-unavailable" : ""}`}>{badgeText}</span>
       </Link>

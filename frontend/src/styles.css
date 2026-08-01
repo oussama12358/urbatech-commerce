@@ -147,7 +147,7 @@ button:not(:disabled):active,
   width: 40px;
   height: 40px;
   border-radius: 8px;
-  font-size: 17px;
+  font-size: 14px;
 }
 .brand-footer strong {
   display: block;
@@ -221,9 +221,10 @@ button:not(:disabled):active,
   border-radius: 8px;
   background: #f59e0b;
   color: #0f172a;
-  font-size: 19px;
+  font-size: 15px;
   line-height: 1;
   font-weight: 900;
+  letter-spacing: 1.4px;
 }
 .brand-text {
   display: inline-flex;
@@ -262,7 +263,7 @@ button:not(:disabled):active,
   width: 48px;
   height: 48px;
   border-radius: 8px;
-  font-size: 19px;
+  font-size: 15px;
   line-height: 1;
 }
 .topbar .brand-text {
@@ -694,6 +695,11 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
 .spec { padding: 6px 8px; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; color: #c4cfdd; background: #111b2c; font-size: 12px; }
 .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .card-actions button { cursor: pointer; }
+.card-actions .full-width-mobile { width: 100%; }
+@media (max-width: 720px) {
+  .card-actions { grid-template-columns: 1fr; }
+  .card-actions .full-width-mobile { grid-column: 1 / -1; }
+}
 .card-actions .primary-btn:not(:disabled):hover {
   transform: translateY(-1px) scale(1.018);
 }

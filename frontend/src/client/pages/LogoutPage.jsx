@@ -17,7 +17,7 @@ export default function LogoutPage() {
   return (
     <main className="auth-shell">
       <section className="auth-card">
-        <Link className="brand" to="/store"><span className="brand-mark">U</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
+        <Link className="brand" to="/store"><span className="brand-mark">UTI</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
         <h1>{t("loggedOut")}</h1>
         <p>{t("logoutMessage")}</p>
       </section>

@@ -16,7 +16,7 @@ export default function ClientLayout() {
     <div className="app">
       <header className="topbar">
         <Link className="brand" to="/store">
-          <div className="brand-mark">U</div>
+          <div className="brand-mark">UTI</div>
           <div className="brand-text">
             <strong>URBA TECH</strong>
             <span>INTER</span>
