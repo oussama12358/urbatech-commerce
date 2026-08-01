@@ -12,6 +12,7 @@ import {
 } from "../settlements/settlement.service.js";
 
 export const adminRouter = Router();
+const onlineSupplierStatuses = ["Connected", "Active"];
 
 adminRouter.use(requireAuth, requireRole("admin"));
 
@@ -274,7 +275,7 @@ adminRouter.get("/reports", async (_req, res, next) => {
     const products = await getCollection("products");
     const suppliers = await getCollection("suppliers");
     const activeProducts = await products.countDocuments({ active: true });
-    const connectedSuppliers = await suppliers.countDocuments({ status: "Connected" });
+    const connectedSuppliers = await suppliers.countDocuments({ status: { $in: onlineSupplierStatuses } });
       const totalSuppliers = await suppliers.countDocuments();
       const paidOrders = orders.filter((order) => order.payment_status === "paid");
     const dispatchedOrders = orders.filter((order) => order.supplier_order_id || order.supplier_dispatches?.length);
@@ -329,7 +330,7 @@ adminRouter.get("/monitoring", async (_req, res, next) => {
     ] = await Promise.all([
       dispatchJobs.countDocuments({ status: "failed" }),
       dispatchJobs.countDocuments({ status: "pending" }),
-      suppliers.countDocuments({ status: { $ne: "Connected" } }),
+      suppliers.countDocuments({ status: { $nin: onlineSupplierStatuses } }),
       settlements.countDocuments({ status: "failed" }),
       settlements.countDocuments({ status: "held" }),
       refunds.countDocuments({ status: "manual_required" }),

@@ -16,7 +16,7 @@ const defaultCapabilities = {
 
 export default function Suppliers() {
   useLocale();
-  const { suppliers, addSupplier, deleteSupplier, testSupplier, syncSupplier, importSupplierProducts, listSupplierProductImports, updateSupplier } = useStore();
+  const { user, suppliers, addSupplier, deleteSupplier, testSupplier, syncSupplier, importSupplierProducts, listSupplierProductImports, updateSupplier } = useStore();
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
   const [formPhase, setFormPhase] = useState("idle");
@@ -735,8 +735,17 @@ export default function Suppliers() {
         ) : (
           <div className="empty-state">
             <div>
-              <h3>{t("noApiSuppliersYet")}</h3>
-              <p>{t("connectYourFirstSupplierLead")}</p>
+              {(!user || !user.token || user.role?.toLowerCase() !== "admin") ? (
+                <>
+                  <h3>{t("noApiSuppliersYet")}</h3>
+                  <p>Sign in as an administrator to view suppliers.</p>
+                </>
+              ) : (
+                <>
+                  <h3>{t("noApiSuppliersYet")}</h3>
+                  <p>{t("connectYourFirstSupplierLead")}</p>
+                </>
+              )}
             </div>
           </div>
         )}

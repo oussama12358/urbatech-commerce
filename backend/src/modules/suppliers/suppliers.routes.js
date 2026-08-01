@@ -59,6 +59,14 @@ const importProductsSchema = z.object({
   dryRun: z.boolean().default(true)
 });
 
+const supplierStatuses = ["Active", "Inactive", "Connected", "Disconnected", "Syncing"];
+
+function normalizeSupplierStatus(status) {
+  if (!status && status !== "") return undefined;
+  const value = String(status).trim();
+  return supplierStatuses.find((item) => item.toLowerCase() === value.toLowerCase()) || undefined;
+}
+
 export const suppliersRouter = Router();
 
 suppliersRouter.post("/webhooks/:id", async (req, res, next) => {
@@ -116,11 +124,12 @@ suppliersRouter.post("/", async (req, res, next) => {
       res.status(409).json({ error: "Supplier name already exists." });
       return;
     }
+    const normalizedStatus = normalizeSupplierStatus(payload.status) || (payload.api_url ? "Connected" : "Active");
     const supplier = {
       id: createId(),
       ...payload,
       ships_to_countries: normalizeCountryCodes(payload.ships_to_countries),
-      status: payload.api_url ? "Disconnected" : payload.status || "Active",
+      status: normalizedStatus,
       api_health: payload.api_url ? "Unknown" : "Manual",
       products_count: 0,
       orders_today: 0,
@@ -144,13 +153,14 @@ suppliersRouter.put("/:id", async (req, res, next) => {
         return;
       }
     }
-    if (payload.status === "Inactive") {
+    const normalizedStatus = payload.status !== undefined ? normalizeSupplierStatus(payload.status) : undefined;
+    if (normalizedStatus === "Inactive" || normalizedStatus === "Disconnected") {
       const products = await getCollection("products");
       await products.updateMany(
         { supplier_id: req.params.id },
         { $set: { supplier_status: "inactive", visibility: "hidden", updated_at: new Date() } }
       );
-    } else if (payload.status === "Active") {
+    } else if (normalizedStatus === "Active" || normalizedStatus === "Connected") {
       const products = await getCollection("products");
       await products.updateMany(
         { supplier_id: req.params.id },
@@ -159,6 +169,9 @@ suppliersRouter.put("/:id", async (req, res, next) => {
     }
 
     const updateFields = { ...payload, updated_at: new Date() };
+    if (payload.status !== undefined) {
+      updateFields.status = normalizedStatus;
+    }
     if (payload.ships_to_countries !== undefined) {
       updateFields.ships_to_countries = normalizeCountryCodes(payload.ships_to_countries);
       // Cascade supplier shipping countries to products that do not have a product-level override

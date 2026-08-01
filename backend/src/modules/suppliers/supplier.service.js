@@ -21,6 +21,8 @@ function normalizeKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+const onlineSupplierStatuses = ["Connected", "Active"];
+
 function normalizeSupplierStatus(status, stock) {
   const value = String(status || "").trim().toLowerCase();
   if (value.includes("discontinued") || value.includes("deleted") || value.includes("removed") || value.includes("stopped")) {
@@ -318,7 +320,7 @@ export async function syncSupplierProducts(id) {
 
 export async function syncAllConnectedSuppliers() {
   const suppliers = await getCollection("suppliers");
-  const rows = await suppliers.find({ status: "Connected", supports_products: true }).toArray();
+  const rows = await suppliers.find({ status: { $in: onlineSupplierStatuses }, supports_products: true }).toArray();
   const results = [];
   for (const supplier of rows) {
     try {
@@ -414,7 +416,7 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
     }
     const supplierSubtotal = roundMoney(supplierItems.reduce((sum, item) => sum + Number(item.supplier_total || 0), 0));
     const commissionTotal = roundMoney(supplierItems.reduce((sum, item) => sum + Number(item.commission || 0), 0));
-    if (!supplier.api_url || !supplier.supports_orders || supplier.status !== "Connected") {
+    if (!supplier.api_url || !supplier.supports_orders || !onlineSupplierStatuses.includes(supplier.status)) {
       const manualDispatch = {
         supplier_id: supplierId,
         supplier_order_id: `MANUAL-${order.id}-${String(supplierId).slice(0, 8)}`,
@@ -619,7 +621,7 @@ export async function syncSupplierOrderStatuses({ limit = 100 } = {}) {
   for (const order of rows) {
     for (const dispatch of order.supplier_dispatches || []) {
       if (!dispatch.supplier_order_id) continue;
-      const supplier = await suppliers.findOne({ id: dispatch.supplier_id, status: "Connected", supports_tracking: true });
+      const supplier = await suppliers.findOne({ id: dispatch.supplier_id, status: { $in: onlineSupplierStatuses }, supports_tracking: true });
       if (!supplier) continue;
       try {
         const adapter = getSupplierAdapter(supplier);
