@@ -1,26 +1,39 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Hero from "../components/Hero.jsx";
 import ProductCard from "../components/ProductCard.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
 import { money } from "../../shared/lib/format.js";
 import { t, useLocale } from "../../i18n.js";
+import { currencyOptionLabel } from "../../shared/lib/currency.js";
 
 export default function StorePage() {
   useLocale();
-  const { products } = useStore();
+  const { products, currency, currencies, setCurrency, resetToProductCurrencies } = useStore();
   const allLabel = t("all");
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("featured");
   const [maxPrice, setMaxPrice] = useState(6500);
   const categories = useMemo(() => ["all", ...new Set(products.map((item) => item.category))], [products]);
+  const priceRangeMax = useMemo(() => {
+    const maximum = Math.max(0, ...products.map((product) => Number(product.price || 0)));
+    return Math.max(100, Math.ceil(maximum / 100) * 100);
+  }, [products]);
+
+  useEffect(() => {
+    // Refreshing rates/currency changes numeric values, so a stale fixed cap
+    // must never make the catalogue look empty.
+    setMaxPrice(priceRangeMax);
+  }, [currency, priceRangeMax]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
     const list = products.filter((product) => {
       const matchesCategory = category === "all" || product.category === category;
-      const matchesPrice = product.price <= maxPrice;
+      // Before country/manual selection, products intentionally retain their
+      // own base currencies. A numeric cross-currency price filter is invalid.
+      const matchesPrice = !currency || product.price <= maxPrice;
       const text = [product.name, product.category, product.desc, (product.specs || []).join(" ")].join(" ").toLowerCase();
       return matchesCategory && matchesPrice && text.includes(q);
     });
@@ -61,11 +74,24 @@ export default function StorePage() {
               </button>
             ))}
           </div>
-          <h2 className="section-title">{t("maxPriceTitle")}</h2>
-          <div className="range-row">
-            <input type="range" min="300" max="6500" step="100" value={maxPrice} onChange={(event) => setMaxPrice(Number(event.target.value))} />
-            <strong>{money(maxPrice)}</strong>
-          </div>
+          <label className="field-group store-currency-select">
+            <span>Currency</span>
+            <select className="select" value={currency || ""} onChange={(event) => event.target.value ? setCurrency(event.target.value) : resetToProductCurrencies()}>
+              <option value="">{t("productOriginalCurrency")}</option>
+              {(currencies.length ? currencies : [{ code: "USD", name: "US Dollar" }]).map((item) => (
+                <option key={item.code} value={item.code}>{currencyOptionLabel(item)}</option>
+              ))}
+            </select>
+          </label>
+          {currency ? (
+            <>
+              <h2 className="section-title">{t("maxPriceTitle")}</h2>
+              <div className="range-row">
+                <input type="range" min="0" max={priceRangeMax} step={Math.max(1, Math.ceil(priceRangeMax / 100))} value={maxPrice} onChange={(event) => setMaxPrice(Number(event.target.value))} />
+                <strong>{money(maxPrice, currency)}</strong>
+              </div>
+            </>
+          ) : null}
         </aside>
 
         <section>

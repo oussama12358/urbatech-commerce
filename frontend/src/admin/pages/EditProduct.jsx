@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import ConfirmDialog from "../../shared/components/ConfirmDialog.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
 import { t, useLocale } from "../../i18n.js";
+import { currencyOptionLabel } from "../../shared/lib/currency.js";
 
 const imageTypes = ["image/jpeg", "image/png", "image/webp"];
 
@@ -29,7 +30,7 @@ export default function EditProduct() {
   const { id } = useParams();
   useLocale();
   const navigate = useNavigate();
-  const { products, categories, updateProduct, deleteProduct } = useStore();
+  const { products, categories, updateProduct, deleteProduct, currencies } = useStore();
   const [error, setError] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const product = products.find((item) => item.id === id);
@@ -79,7 +80,8 @@ export default function EditProduct() {
       await updateProduct(product.id, {
         name: form.name,
         category,
-        price: numberValue(price || form.price),
+        base_price: numberValue(price || form.price),
+        base_currency: form.base_currency || product.base_currency || "USD",
         stock: Number(form.stock),
         margin: numberValue(margin || form.margin),
         cost_price: numberValue(costPrice || form.cost_price),
@@ -147,7 +149,10 @@ export default function EditProduct() {
             <div className="form-grid four">
               <input className="input" name="cost_price" type="number" min="0" step="0.01" value={costPrice} onChange={(event) => handleCostChange(event.target.value)} placeholder={t("costPricePlaceholder")} />
               <input className="input" name="margin" type="number" min="0" step="0.01" value={margin} onChange={(event) => handleMarginChange(event.target.value)} placeholder={t("marginPlaceholder")} required />
-              <input className="input" name="price" type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder={t("sellingPrice")} required />
+              <input className="input" name="price" type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="Base selling price" required />
+              <select className="select" name="base_currency" defaultValue={product.base_currency || "USD"}>
+                {(currencies.length ? currencies : [{ code: "USD", name: "US Dollar", symbol: "$" }]).map((item) => <option key={item.code} value={item.code}>{currencyOptionLabel(item)}</option>)}
+              </select>
               <input className="input" name="stock" type="number" min="0" defaultValue={product.stock} placeholder={t("stockPlaceholder")} required />
             </div>
           </div>

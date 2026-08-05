@@ -9,6 +9,7 @@ import {
 import { ensureSupplierSettlementsForOrder } from "../settlements/settlement.service.js";
 import { getSupplierAdapter } from "./supplier-adapters.js";
 import { normalizeCountryCodes } from "../../utils/shipping-countries.js";
+import { normalizeCurrency } from "../currencies/currency.service.js";
 
 const MAX_DISPATCH_ATTEMPTS = 6;
 const RETRY_BASE_DELAY_MS = 5 * 60 * 1000;
@@ -272,6 +273,8 @@ export async function syncSupplierProducts(id) {
           name: item.name,
           description: item.description || "",
           price,
+          base_price: price,
+          base_currency: normalizeCurrency(item.currency || "USD"),
           cost_price: costPrice,
           margin,
           stock,

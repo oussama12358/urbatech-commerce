@@ -32,6 +32,9 @@ export const env = {
   paypalMode: process.env.PAYPAL_MODE || "sandbox",
   // PayPal webhook ID (from PayPal app webhook configuration) for signature verification
   paypalWebhookId: process.env.PAYPAL_WEBHOOK_ID || "",
+  // Open Exchange Rates compatible endpoint returning rates relative to USD.
+  exchangeRateApiUrl: process.env.EXCHANGE_RATE_API_URL || "https://open.er-api.com/v6/latest/USD",
+  exchangeRateCacheMs: Number(process.env.EXCHANGE_RATE_CACHE_MS || 6 * 60 * 60 * 1000),
   // Supplier sync interval: use MS directly, or fallback to minutes. Default is 60 minutes.
   supplierSyncIntervalMs: Number(process.env.SUPPLIER_SYNC_INTERVAL_MS || 0) || (Number(process.env.SUPPLIER_SYNC_INTERVAL_MINUTES || 0) * 60 * 1000) || 60 * 60 * 1000,
   supplierRetryIntervalMs: Number(process.env.SUPPLIER_RETRY_INTERVAL_MS || 0) || (Number(process.env.SUPPLIER_RETRY_INTERVAL_MINUTES || 0) * 60 * 1000) || 5 * 60 * 1000,

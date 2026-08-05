@@ -98,7 +98,7 @@ export default function ProductCard({ product }) {
       <div className="product-body">
         <div className="product-top">
           <span className="category">{product.category}</span>
-          <span className="price">{money(product.price)}</span>
+          <span className="price">{money(product.price, product.currency)}</span>
         </div>
         <h3>{product.name}</h3>
         <p className="desc">{product.desc}</p>

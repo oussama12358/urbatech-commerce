@@ -685,6 +685,8 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
 .product-top { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
 .category { color: #ffb400; font-size: 12px; font-weight: 600; text-transform: uppercase; }
 .price { font-size: 16px; font-weight: 700; white-space: nowrap; }
+.store-currency-select { margin: 0 0 20px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .product-card h3 { margin: 0; min-height: 48px; font-size: 18px; line-height: 1.25; font-weight: 600; }
 .product-card:hover h3,
 .product-card:focus-within h3 {
@@ -800,6 +802,7 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
 .payment-panel { display: grid; gap: 18px; margin-top: 18px; padding: 18px; border-radius: 16px; background: rgba(16, 26, 42, 0.95); border: 1px solid rgba(255, 255, 255, 0.08); }
 .payment-panel > div { display: grid; gap: 10px; }
 .payment-hint { color: #9ab1c8; font-size: 13px; margin-top: 6px; }
+.payment-currency-confirmation { color: #fbbf24; font-weight: 700; }
 .payment-logos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .payment-badge { display: inline-flex; align-items: center; justify-content: center; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); color: #c4cfdd; font-size: 12px; }
 .payment-warning { border: 1px solid rgba(255,180,0,.25); background: rgba(255,180,0,.08); color: #f5d78d; padding: 12px; border-radius: 10px; }

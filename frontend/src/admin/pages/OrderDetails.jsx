@@ -13,12 +13,20 @@ export default function OrderDetails() {
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [carrier, setCarrier] = useState("");
+  const [tracking, setTracking] = useState("");
+  const [fulfillmentStatus, setFulfillmentStatus] = useState("Processing");
 
   useEffect(() => {
     if (!user?.token) return;
     const api = createApiClient(user.token);
     api(`/admin/orders/${id}`)
-      .then((json) => setOrder(json.data))
+      .then((json) => {
+        setOrder(json.data);
+        setCarrier(json.data?.carrier || "");
+        setTracking(json.data?.tracking || "");
+        setFulfillmentStatus(["Processing", "Shipped", "Delivered"].includes(json.data?.status) ? json.data.status : "Processing");
+      })
       .catch((err) => setError(err.message || t("unableToLoadOrder")));
   }, [id, user?.token]);
 
@@ -26,11 +34,35 @@ export default function OrderDetails() {
     const api = createApiClient(user.token);
     const json = await api(`/admin/orders/${id}`);
     setOrder(json.data);
+    setCarrier(json.data?.carrier || "");
+    setTracking(json.data?.tracking || "");
+    setFulfillmentStatus(["Processing", "Shipped", "Delivered"].includes(json.data?.status) ? json.data.status : "Processing");
+  };
+
+  const saveFulfillment = async (event) => {
+    event.preventDefault();
+    if (!user?.token || !order || busy) return;
+    setBusy(true);
+    setActionMessage("");
+    setError("");
+    try {
+      const api = createApiClient(user.token);
+      await api(`/admin/orders/${id}/fulfillment`, {
+        method: "PUT",
+        body: JSON.stringify({ carrier, tracking, status: fulfillmentStatus })
+      });
+      setActionMessage("Fulfillment and tracking details saved.");
+      await refreshOrder();
+    } catch (err) {
+      setError(err.message || "Unable to save fulfillment details.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const refund = async () => {
     if (!user?.token || !order || busy) return;
-    if (!window.confirm(t("refundOrderConfirm").replace("{amount}", money(order.total)))) return;
+    if (!window.confirm(t("refundOrderConfirm").replace("{amount}", money(order.total, order.currency || "USD")))) return;
     setBusy(true);
     setActionMessage("");
     setError("");
@@ -72,6 +104,10 @@ export default function OrderDetails() {
     return status;
   };
 
+  const isUrbaTechStockOrder = Boolean(
+    order?.items?.length && order.items.every((item) => !item.supplier_id)
+  );
+
   return (
     <main className="admin-main">
       <div className="admin-page-head">
@@ -95,18 +131,41 @@ export default function OrderDetails() {
           <div className="panel">
             <h2>{t("supplier")}</h2>
             <div className="kv">
-              <div className="kv-row"><span>{t("supplier")}</span><strong>{order.supplier_id || "-"}</strong></div>
-              <div className="kv-row"><span>{t("supplierOrder")}</span><strong>{order.supplier_order_id || "-"}</strong></div>
+              <div className="kv-row"><span>{t("supplier")}</span><strong>{isUrbaTechStockOrder ? "URBA TECH stock" : order.supplier_id || "-"}</strong></div>
+              <div className="kv-row"><span>{t("supplierOrder")}</span><strong>{isUrbaTechStockOrder ? "URBA TECH stock" : order.supplier_order_id || "-"}</strong></div>
               <div className="kv-row"><span>{t("tracking")}</span><strong>{order.tracking || "-"}</strong></div>
               <div className="kv-row"><span>{t("carrier")}</span><strong>{order.carrier || "-"}</strong></div>
               <div className="kv-row"><span>{t("status")}</span><strong>{translateOrderStatus(order.status)}</strong></div>
               <div className="kv-row"><span>{t("payment")}</span><strong>{translatePaymentStatus(order.payment_status)}</strong></div>
-              <div className="kv-row"><span>{t("supplierPayable")}</span><strong>{money(order.supplier_payable || 0)}</strong></div>
-              <div className="kv-row"><span>{t("productCommission")}</span><strong>{money(order.product_commission || 0)}</strong></div>
-              <div className="kv-row"><span>{t("platformCommission")}</span><strong>{money(order.platform_commission || 0)}</strong></div>
+              <div className="kv-row"><span>{t("supplierPayable")}</span><strong>{isUrbaTechStockOrder ? "URBA TECH stock" : money(order.supplier_payable || 0, order.currency || "USD")}</strong></div>
+              <div className="kv-row"><span>{t("productCommission")}</span><strong>{money(order.product_commission || 0, order.currency || "USD")}</strong></div>
+              <div className="kv-row"><span>{t("platformCommission")}</span><strong>{money(order.platform_commission || 0, order.currency || "USD")}</strong></div>
               <div className="kv-row"><span>{t("dispatchError")}</span><strong>{order.supplier_dispatch_error || "-"}</strong></div>
             </div>
           </div>
+          <form className="panel form-grid" onSubmit={saveFulfillment}>
+            <div>
+              <h2>Manual fulfillment</h2>
+              <p className="page-copy">For URBA TECH stock and Excel/CSV suppliers. API suppliers can continue updating tracking automatically.</p>
+            </div>
+            <label className="field-group">
+              <span>{t("carrier")}</span>
+              <input className="input" value={carrier} onChange={(event) => setCarrier(event.target.value)} placeholder="DHL, Aramex, La Poste…" />
+            </label>
+            <label className="field-group">
+              <span>{t("tracking")}</span>
+              <input className="input" value={tracking} onChange={(event) => setTracking(event.target.value)} placeholder="Tracking number" />
+            </label>
+            <label className="field-group">
+              <span>{t("status")}</span>
+              <select className="select" value={fulfillmentStatus} onChange={(event) => setFulfillmentStatus(event.target.value)}>
+                <option value="Processing">Processing</option>
+                <option value="Shipped">Shipped</option>
+                <option value="Delivered">Delivered</option>
+              </select>
+            </label>
+            <button className="primary-btn" type="submit" disabled={busy}>{busy ? t("processing") : "Save fulfillment"}</button>
+          </form>
           <div className="panel">
             <h2>{t("customer")}</h2>
             <div className="kv">
@@ -136,10 +195,10 @@ export default function OrderDetails() {
                     <td>{item.name}</td>
                     <td>{item.supplier_product_id || "-"}</td>
                     <td>{item.qty}</td>
-                    <td>{money(item.unit_price)}</td>
-                    <td>{money(item.cost_price || 0)}</td>
-                    <td>{money(item.commission || 0)}</td>
-                    <td>{money(item.total)}</td>
+                    <td>{money(item.unit_price, order.currency || "USD")}</td>
+                    <td>{money(item.cost_price || 0, order.currency || "USD")}</td>
+                    <td>{money(item.commission || 0, order.currency || "USD")}</td>
+                    <td>{money(item.total, order.currency || "USD")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -170,8 +229,8 @@ export default function OrderDetails() {
                       <td>{dispatch.carrier || "-"}</td>
                       <td>{dispatch.tracking || "-"}</td>
                       <td>{dispatch.invoice_url ? <a className="link-button" href={dispatch.invoice_url} target="_blank" rel="noreferrer">{dispatch.invoice_number || t("open")}</a> : dispatch.invoice_number || "-"}</td>
-                      <td>{money(dispatch.supplier_payable || 0)}</td>
-                      <td>{money(dispatch.commission_total || 0)}</td>
+                      <td>{money(dispatch.supplier_payable || 0, order.currency || "USD")}</td>
+                      <td>{money(dispatch.commission_total || 0, order.currency || "USD")}</td>
                     </tr>
                   ))}
                 </tbody>

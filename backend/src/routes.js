@@ -9,6 +9,7 @@ import { categoriesRouter } from "./modules/categories/categories.routes.js";
 import { settingsRouter } from "./modules/settings/settings.routes.js";
 import { suppliersRouter } from "./modules/suppliers/suppliers.routes.js";
 import { paymentProvidersRouter } from "./modules/payments/payment.routes.js";
+import { currenciesRouter } from "./modules/currencies/currencies.routes.js";
 
 export const apiRouter = Router();
 
@@ -34,6 +35,7 @@ apiRouter.use("/categories", categoriesRouter);
 apiRouter.use("/settings", settingsRouter);
 apiRouter.use("/suppliers", suppliersRouter);
 apiRouter.use("/payments", paymentProvidersRouter);
+apiRouter.use("/currencies", currenciesRouter);
 apiRouter.use("/orders", ordersRouter);
 apiRouter.use("/checkout", checkoutRouter);
 apiRouter.use("/admin", adminRouter);

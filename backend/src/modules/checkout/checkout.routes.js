@@ -13,6 +13,7 @@ import {
   isRedirectPaymentProvider,
   isStripeProvider
 } from "../payments/payment.service.js";
+import { minorUnitMultiplier, providerSupportsCurrency, roundCurrency } from "../currencies/currency.service.js";
 
 export const checkoutRouter = Router();
 
@@ -72,11 +73,17 @@ checkoutRouter.post("/session", requireAuth, async (req, res, next) => {
       return;
     }
 
+    const currency = String(order.currency || "USD").toUpperCase();
+    if (!providerSupportsCurrency(provider.provider_key, currency, provider.config || {})) {
+      res.status(400).json({ error: `${provider.name} cannot process ${currency}. Choose another currency or payment method.` });
+      return;
+    }
+    const multiplier = minorUnitMultiplier(currency);
     const lineItems = order.items.map((item) => ({
       quantity: item.qty,
       price_data: {
-        currency: "usd",
-        unit_amount: Math.round(item.unit_price * 100),
+        currency: currency.toLowerCase(),
+        unit_amount: Math.round(item.unit_price * multiplier),
         product_data: { name: item.name || item.product_id }
       }
     }));
@@ -84,8 +91,8 @@ checkoutRouter.post("/session", requireAuth, async (req, res, next) => {
       lineItems.push({
         quantity: 1,
         price_data: {
-          currency: "usd",
-          unit_amount: Math.round(order.service_fee * 100),
+          currency: currency.toLowerCase(),
+          unit_amount: Math.round(order.service_fee * multiplier),
           product_data: { name: "Service fee" }
         }
       });
@@ -94,8 +101,8 @@ checkoutRouter.post("/session", requireAuth, async (req, res, next) => {
       lineItems.push({
         quantity: 1,
         price_data: {
-          currency: "usd",
-          unit_amount: Math.round(order.shipping * 100),
+          currency: currency.toLowerCase(),
+          unit_amount: Math.round(order.shipping * multiplier),
           product_data: { name: "Shipping" }
         }
       });
@@ -163,8 +170,8 @@ checkoutRouter.post("/session", requireAuth, async (req, res, next) => {
             purchase_units: [
               {
                 amount: {
-                  currency_code: "USD",
-                  value: (order.total || 0).toFixed(2)
+                  currency_code: currency,
+                  value: String(roundCurrency(order.total, currency))
                 }
               }
             ],

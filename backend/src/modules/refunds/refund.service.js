@@ -9,6 +9,7 @@ import {
   isStripeProvider
 } from "../payments/payment.service.js";
 import { getSupplierAdapter } from "../suppliers/supplier-adapters.js";
+import { minorUnitMultiplier, roundCurrency } from "../currencies/currency.service.js";
 
 function roundMoney(value) {
   return Math.round(Number(value || 0) * 100) / 100;
@@ -96,7 +97,7 @@ async function performGatewayRefund(order, amount) {
     }
     const refund = await stripe.refunds.create({
       payment_intent: order.stripe_payment_intent,
-      amount: Math.round(amount * 100),
+      amount: Math.round(amount * minorUnitMultiplier(order.currency || "USD")),
       metadata: { order_id: order.id }
     });
     return { status: "succeeded", provider_refund_id: refund.id, raw: refund };
@@ -118,7 +119,7 @@ async function performGatewayRefund(order, amount) {
       body: JSON.stringify({
         amount: {
           currency_code: order.currency || "USD",
-          value: amount.toFixed(2)
+          value: String(roundCurrency(amount, order.currency || "USD"))
         }
       })
     });

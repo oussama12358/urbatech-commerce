@@ -54,12 +54,17 @@ export function isRedirectPaymentProvider(provider) {
 }
 
 function serializeProvider(provider, includeConfig = false) {
+  const configuredCurrencies = provider.config?.supportedCurrencies || provider.config?.supported_currencies;
   return {
     id: provider.id,
     provider_key: provider.provider_key,
     name: provider.name,
     description: provider.description || "",
     enabled: Boolean(provider.enabled),
+    // Safe for storefront use; credentials remain server-only.
+    supported_currencies: Array.isArray(configuredCurrencies)
+      ? configuredCurrencies.map((currency) => String(currency).toUpperCase())
+      : [],
     ...(includeConfig ? { config: provider.config || {} } : {})
   };
 }

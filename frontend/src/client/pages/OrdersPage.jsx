@@ -35,7 +35,7 @@ export default function OrdersPage() {
                   <td>{order.carrier || "-"}</td>
                   <td>{order.tracking || "-"}</td>
                   <td>{order.items.map((item) => item.name).join(", ")}</td>
-                  <td>{money(order.total)}</td>
+                  <td>{money(order.total, order.currency || "USD")}</td>
                 </tr>
               ))}
             </tbody>

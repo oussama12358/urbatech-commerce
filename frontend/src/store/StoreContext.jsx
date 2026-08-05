@@ -3,6 +3,7 @@ import { readStorage, writeStorage } from "../shared/lib/storage.js";
 import { createApiClient } from "../shared/lib/api.js";
 import { showToast } from "../shared/lib/toast.js";
 import { t } from "../i18n.js";
+import { defaultCurrencyForCountry } from "../shared/lib/currency.js";
 import {
   getProductShipsTo,
   isProductAvailableInCountry,
@@ -18,7 +19,9 @@ const KEYS = {
   products: "ut_react_products",
   categories: "ut_react_categories",
   settings: "ut_react_settings",
-  paymentProviders: "ut_react_payment_providers"
+  paymentProviders: "ut_react_payment_providers",
+  currency: "ut_currency",
+  currencyPreference: "ut_currency_preference"
 };
 
 const mergeCarts = (serverCart = {}, localCart = {}) => {
@@ -40,6 +43,15 @@ export function StoreProvider({ children }) {
   const [suppliers, setSuppliersState] = useState([]);
   const [settings, setSettingsState] = useState({ storefrontEnabled: true });
   const [paymentProviders, setPaymentProviders] = useState([]);
+  const [currencyPreference, setCurrencyPreference] = useState(() => readStorage(KEYS.currencyPreference, "auto"));
+  const [currency, setCurrencyState] = useState(() => {
+    const saved = readStorage(KEYS.currency, null);
+    if (saved) return saved;
+    const storedUser = readStorage(KEYS.user, null);
+    return storedUser?.country_code ? defaultCurrencyForCountry(storedUser.country_code) : null;
+  });
+  const [currencies, setCurrencies] = useState([]);
+  const [shippingEstimate, setShippingEstimate] = useState(120);
   const cartRef = useRef(cart);
   const lastLocalCartChangeRef = useRef(0);
 
@@ -90,11 +102,12 @@ export function StoreProvider({ children }) {
       if (mounted) setProductsLoading(true);
       try {
         const api = createApiClient(user?.token);
-        const [productsJson, categoriesJson, settingsJson, paymentProvidersJson] = await Promise.all([
-          api("/products"),
+        const [productsJson, categoriesJson, settingsJson, paymentProvidersJson, currenciesJson] = await Promise.all([
+          api(currency ? `/products?currency=${encodeURIComponent(currency)}` : "/products"),
           api("/categories"),
           api("/settings"),
-          api("/payments")
+          api("/payments"),
+          api("/currencies")
         ]);
         function sanitizeProducts(list) {
           if (!Array.isArray(list)) return [];
@@ -121,6 +134,7 @@ export function StoreProvider({ children }) {
         if (paymentProvidersJson?.data && mounted) {
           setPaymentProviders(paymentProvidersJson.data);
         }
+        if (currenciesJson?.data && mounted) setCurrencies(currenciesJson.data);
       } catch (err) {
         localStorage.removeItem(KEYS.products);
         localStorage.removeItem(KEYS.categories);
@@ -132,7 +146,42 @@ export function StoreProvider({ children }) {
     };
     load();
     return () => (mounted = false);
-  }, [user?.token]);
+  }, [user?.token, currency]);
+
+  const setCurrency = (nextCurrency) => {
+    const next = String(nextCurrency || "USD").toUpperCase();
+    setCurrencyState(next);
+    writeStorage(KEYS.currency, next);
+    setCurrencyPreference("manual");
+    writeStorage(KEYS.currencyPreference, "manual");
+  };
+
+  const setAutomaticCurrencyForCountry = (countryCode) => {
+    if (currencyPreference === "manual" || !countryCode) return;
+    const next = defaultCurrencyForCountry(countryCode);
+    setCurrencyState(next);
+    writeStorage(KEYS.currency, next);
+    setCurrencyPreference("auto");
+    writeStorage(KEYS.currencyPreference, "auto");
+  };
+
+  const resetToProductCurrencies = () => {
+    setCurrencyState(null);
+    localStorage.removeItem(KEYS.currency);
+    setCurrencyPreference("auto");
+    writeStorage(KEYS.currencyPreference, "auto");
+  };
+
+  useEffect(() => {
+    if (!currency) {
+      setShippingEstimate(120);
+      return;
+    }
+    const api = createApiClient(user?.token);
+    api(`/currencies/convert?amount=120&from=USD&to=${encodeURIComponent(currency)}`)
+      .then((json) => setShippingEstimate(Number(json?.data?.amount || 120)))
+      .catch(() => setShippingEstimate(120));
+  }, [currency, user?.token]);
 
   const syncCartFromServer = useCallback(
     async ({ mergeLocal = false } = {}) => {
@@ -383,6 +432,12 @@ export function StoreProvider({ children }) {
 
   const addToCart = (id, qty = 1) => {
     const product = products.find((item) => item.id === id);
+    // Before a country/manual choice, the first item establishes a temporary
+    // cart currency so cart totals never mix unrelated product currencies.
+    if (!currency && product?.currency) {
+      setCurrencyState(product.currency);
+      writeStorage(KEYS.currency, product.currency);
+    }
     if (product && product.stock <= 0) {
       return;
     }
@@ -439,7 +494,7 @@ export function StoreProvider({ children }) {
 
     const json = await api("/orders", {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ ...payload, currency })
     });
 
     if (!json?.data) {
@@ -470,7 +525,7 @@ export function StoreProvider({ children }) {
     if (options.clearCartAfterCreate !== false) {
       // Refresh product list to reflect decremented stock, then clear cart
       try {
-        const productsJson = await api("/products");
+        const productsJson = await api(currency ? `/products?currency=${encodeURIComponent(currency)}` : "/products");
         if (productsJson?.data) setProducts(productsJson.data);
       } catch (err) {
         // ignore product refresh errors
@@ -516,7 +571,7 @@ export function StoreProvider({ children }) {
   const cartCount = cartLines.reduce((sum, line) => sum + line.qty, 0);
   const subtotal = cartLines.reduce((sum, line) => sum + line.price * line.qty, 0);
   const service = subtotal ? Math.round(subtotal * 0.03) : 0;
-  const shipping = subtotal ? 120 : 0;
+  const shipping = subtotal ? shippingEstimate : 0;
   const totals = { subtotal, service, shipping, total: subtotal + service + shipping };
 
   const addOrder = (type, form) => {
@@ -695,7 +750,7 @@ export function StoreProvider({ children }) {
     const api = createApiClient(user.token);
     const json = await api("/checkout/session", {
       method: "POST",
-      body: JSON.stringify({ order_id: orderId, provider_key: providerKey })
+      body: JSON.stringify({ order_id: orderId, provider_key: providerKey, currency })
     });
     if (json?.url) return { url: json.url };
     if (json?.redirectUrl) return { redirectUrl: json.redirectUrl };
@@ -722,6 +777,11 @@ export function StoreProvider({ children }) {
     suppliers,
     settings,
     paymentProviders,
+    currencies,
+    currency,
+    setCurrency,
+    resetToProductCurrencies,
+    setAutomaticCurrencyForCountry,
     addProduct,
     updateProduct,
     deleteProduct,

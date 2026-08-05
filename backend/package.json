@@ -9,6 +9,7 @@
     "migrate:sql": "node scripts/migrate-sql-to-mongo.mjs",
     "cart-scenarios": "node scripts/cart-scenarios.mjs",
     "test:marketplace": "node --test tests/marketplace.test.mjs",
+    "test:currencies": "node --test tests/currency.test.mjs",
     "validate:production": "node scripts/validate-production.mjs",
     "load:test": "node scripts/load-test.mjs",
     "backup:mongo": "node scripts/backup-mongo.mjs",

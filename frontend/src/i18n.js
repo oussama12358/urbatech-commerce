@@ -6,6 +6,9 @@ const locales = {
   en: {
     products: "Products",
     categories: "Categories",
+    productOriginalCurrency: "Product original currency",
+    chargedInCurrency: "You will be charged {amount} in {currency}.",
+    excelImportIdentityHint: "Required: keep Supplier Product ID / SKU stable in every re-import. Changing it creates a new product.",
     estimatedDelivery: "Estimated delivery",
     fastDelivery: "Fast delivery",
     productsReady: "Products ready for pilot catalogue",
@@ -576,8 +579,13 @@ const locales = {
     accountDisabled: "Account Disabled",
     supplier_id: "Supplier Id",
     syncing: "Syncing",
+    currency: "Currency",
+    payoutMethod: "Payout Method",
 },
   fr: {
+    productOriginalCurrency: "Devise d\u2019origine du produit",
+    chargedInCurrency: "Votre paiement sera d\u00e9bit\u00e9 de {amount} en {currency}.",
+    excelImportIdentityHint: "Obligatoire : conservez le m\u00eame identifiant produit fournisseur / SKU \u00e0 chaque r\u00e9importation. Le modifier cr\u00e9e un nouveau produit.",
     products: "Produits",
     categories: "Catégories",
     estimatedDelivery: "Livraison estimée",
@@ -1154,8 +1162,13 @@ const locales = {
     inactive: "Inactif",
     saveShipsToCountries: "Enregistrer les pays de livraison",
       supplier_id: "Supplier Id",
+    currency: "Currency",
+    payoutMethod: "Payout Method",
 },
   ar: {
+    productOriginalCurrency: "\u0627\u0644\u0639\u0645\u0644\u0629 \u0627\u0644\u0623\u0635\u0644\u064a\u0629 \u0644\u0644\u0645\u0646\u062a\u062c",
+    chargedInCurrency: "\u0633\u064a\u062a\u0645 \u062e\u0635\u0645 {amount} \u0628\u0639\u0645\u0644\u0629 {currency}.",
+    excelImportIdentityHint: "\u0645\u0637\u0644\u0648\u0628: \u062d\u0627\u0641\u0638 \u0639\u0644\u0649 \u0646\u0641\u0633 \u0645\u0639\u0631\u0651\u0641 \u0645\u0646\u062a\u062c \u0627\u0644\u0645\u0648\u0631\u0651\u062f / SKU \u0641\u064a \u0643\u0644 \u0627\u0633\u062a\u064a\u0631\u0627\u062f. \u062a\u063a\u064a\u064a\u0631\u0647 \u064a\u0646\u0634\u0626 \u0645\u0646\u062a\u062c\u0627\u064b \u062c\u062f\u064a\u062f\u0627\u064b.",
     products: "المنتجات",
     categories: "الفئات",
     estimatedDelivery: "التسليم المقدر",
@@ -1732,6 +1745,8 @@ const locales = {
     inactive: "غير نشط",
     saveShipsToCountries: "حفظ بلدان الشحن",
     supplier_id: "Supplier Id",
+    currency: "Currency",
+    payoutMethod: "Payout Method",
 }
 };
 

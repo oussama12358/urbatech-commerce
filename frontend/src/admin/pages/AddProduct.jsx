@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useStore } from "../../store/StoreContext.jsx";
 import { t, useLocale } from "../../i18n.js";
+import { currencyOptionLabel } from "../../shared/lib/currency.js";
 
 const imageTypes = ["image/jpeg", "image/png", "image/webp"];
 
@@ -35,7 +36,7 @@ function readImage(file) {
 
 export default function AddProduct() {
   useLocale();
-  const { addProduct, categories } = useStore();
+  const { addProduct, categories, currencies } = useStore();
   const navigate = useNavigate();
   const [error, setError] = useState("");
   const [newCategory, setNewCategory] = useState("");
@@ -83,7 +84,8 @@ export default function AddProduct() {
       await addProduct({
         name: form.name,
         category,
-        price: numberValue(price || form.price),
+        base_price: numberValue(price || form.price),
+        base_currency: form.base_currency || "USD",
         stock: Number(form.stock),
         margin: numberValue(margin || form.margin),
         cost_price: numberValue(costPrice || form.cost_price),
@@ -164,8 +166,14 @@ export default function AddProduct() {
               <input className="input" name="margin" type="number" min="0" step="0.01" value={margin} onChange={(event) => handleMarginChange(event.target.value)} placeholder={t("marginPlaceholder")} required />
             </label>
             <label className="field-group">
-              <RequiredLabel>{t("sellingPrice")}</RequiredLabel>
+              <RequiredLabel>Base selling price</RequiredLabel>
               <input className="input" name="price" type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder={t("sellingPrice")} required />
+            </label>
+            <label className="field-group">
+              <RequiredLabel>Base currency</RequiredLabel>
+              <select className="select" name="base_currency" defaultValue="USD">
+                {(currencies.length ? currencies : [{ code: "USD", name: "US Dollar", symbol: "$" }]).map((item) => <option key={item.code} value={item.code}>{currencyOptionLabel(item)}</option>)}
+              </select>
             </label>
             <label className="field-group">
               <RequiredLabel>{t("stock")}</RequiredLabel>

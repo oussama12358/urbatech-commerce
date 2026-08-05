@@ -61,7 +61,7 @@ export default function Orders() {
                   <td>{order.supplier_id || "-"}</td>
                   <td>{order.supplier_order_id || "-"}</td>
                   <td>{order.tracking || "-"}</td>
-                  <td>{money(order.total)}</td>
+                  <td>{money(order.total, order.currency || "USD")}</td>
                 </tr>
               ))}
             </tbody>

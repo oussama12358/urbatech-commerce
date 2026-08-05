@@ -3,11 +3,14 @@ import { z } from "zod";
 import { getCollection, createId } from "../../db/mongo.js";
 import { requireAuth, requireRole, optionalAuth } from "../../middleware/auth.js";
 import { normalizeCountryCodes, resolveShipsToCountries } from "../../utils/shipping-countries.js";
+import { convertAmount, productBaseCurrency, sellingBasePrice, normalizeCurrency } from "../currencies/currency.service.js";
 
 const createProductSchema = z.object({
   name: z.string().min(2),
   category: z.string().min(1).optional(),
-  price: z.number().positive(),
+  price: z.number().positive().optional(),
+  base_price: z.number().positive().optional(),
+  base_currency: z.string().length(3).optional(),
   stock: z.number().int().nonnegative(),
   margin: z.number().nonnegative(),
   status: z.string().min(1).optional(),
@@ -113,7 +116,7 @@ async function ensureCategoryId(name) {
   return category.id;
 }
 
-function serializeProduct(product, categoryName = null, includeInternal = false, supplier = null) {
+async function serializeProduct(product, categoryName = null, includeInternal = false, supplier = null, currency = "USD") {
   const shipsTo = resolveShipsToCountries(product, supplier);
   const serialized = {
     id: product.id,
@@ -121,7 +124,8 @@ function serializeProduct(product, categoryName = null, includeInternal = false,
     description: product.description,
     long_description: product.long_description || "",
     desc: product.description,
-    price: product.price,
+    price: await convertAmount(sellingBasePrice(product), productBaseCurrency(product), currency),
+    currency: normalizeCurrency(currency),
     stock: product.stock,
     status: product.status,
     warranty: product.warranty,
@@ -146,6 +150,8 @@ function serializeProduct(product, categoryName = null, includeInternal = false,
   serialized.supplier_status = product.supplier_status || "active";
 
   if (includeInternal) {
+    serialized.base_price = sellingBasePrice(product);
+    serialized.base_currency = productBaseCurrency(product);
     serialized.cost_price = product.cost_price || 0;
     serialized.margin = product.margin || 0;
     serialized.auto_sync = Boolean(product.auto_sync);
@@ -184,7 +190,7 @@ async function loadSupplierMap(supplierIds = []) {
   }, {});
 }
 
-async function getProductById(id, includeInternal = false) {
+async function getProductById(id, includeInternal = false, currency = null) {
   const products = await getCollection("products");
   const categories = await getCollection("categories");
   const product = await products.findOne({ ...productVisibilityQuery(includeInternal), id });
@@ -192,7 +198,7 @@ async function getProductById(id, includeInternal = false) {
 
   const category = product.category_id ? await categories.findOne({ id: product.category_id }) : null;
   const supplierMap = await loadSupplierMap([product.supplier_id]);
-  return serializeProduct(product, category?.name || null, includeInternal, supplierMap[product.supplier_id] || null);
+  return serializeProduct(product, category?.name || null, includeInternal, supplierMap[product.supplier_id] || null, currency || productBaseCurrency(product));
 }
 
 productsRouter.get("/", async (req, res, next) => {
@@ -200,6 +206,7 @@ productsRouter.get("/", async (req, res, next) => {
     const products = await getCollection("products");
     const categories = await getCollection("categories");
     const includeInternal = req.user?.role?.toLowerCase() === "admin";
+    const requestedCurrency = req.query.currency ? normalizeCurrency(req.query.currency) : null;
     const rows = await products
       .find(productVisibilityQuery(includeInternal))
       .sort({ created_at: -1 })
@@ -218,14 +225,14 @@ productsRouter.get("/", async (req, res, next) => {
     const supplierMap = await loadSupplierMap(rows.map((product) => product.supplier_id));
 
     res.json({
-      data: rows.map((product) =>
+      data: await Promise.all(rows.map((product) =>
         serializeProduct(
           product,
           categoryMap[product.category_id] || null,
           includeInternal,
           supplierMap[product.supplier_id] || null
-        )
-      )
+        , requestedCurrency || productBaseCurrency(product))
+      ))
     });
   } catch (err) {
     next(err);
@@ -234,7 +241,11 @@ productsRouter.get("/", async (req, res, next) => {
 
 productsRouter.get("/:id", async (req, res, next) => {
   try {
-    const product = await getProductById(req.params.id, req.user?.role?.toLowerCase() === "admin");
+    const product = await getProductById(
+      req.params.id,
+      req.user?.role?.toLowerCase() === "admin",
+      req.query.currency ? normalizeCurrency(req.query.currency) : null
+    );
     if (!product) {
       res.status(404).json({ error: "Product not found" });
       return;
@@ -248,6 +259,7 @@ productsRouter.get("/:id", async (req, res, next) => {
 productsRouter.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const payload = createProductSchema.parse(req.body);
+    if (payload.base_price === undefined && payload.price === undefined) throw new Error("base_price is required");
 
     const categoryId = await ensureCategoryId(payload.category);
     const slug = slugify(payload.slug || payload.name) || "product";
@@ -264,7 +276,10 @@ productsRouter.post("/", requireAuth, requireRole("admin"), async (req, res, nex
       name: payload.name,
       description,
       long_description: payload.long_description || "",
-      price: payload.price,
+      // price is retained for older integrations only; base_price is authoritative.
+      price: payload.base_price ?? payload.price,
+      base_price: payload.base_price ?? payload.price,
+      base_currency: normalizeCurrency(payload.base_currency || "USD"),
       margin: payload.margin || 0,
       cost_price: payload.cost_price || 0,
       stock: payload.stock || 0,
@@ -306,7 +321,7 @@ productsRouter.post("/", requireAuth, requireRole("admin"), async (req, res, nex
     };
     await products.insertOne(product);
 
-    res.status(201).json({ data: await getProductById(id, true) });
+    res.status(201).json({ data: await getProductById(id, true, productBaseCurrency(product)) });
   } catch (err) {
     next(err);
   }
@@ -344,7 +359,9 @@ productsRouter.put("/:id", requireAuth, requireRole("admin"), async (req, res, n
       ...(payload.name !== undefined ? { name: payload.name } : {}),
       ...(description !== undefined ? { description } : {}),
       ...(payload.long_description !== undefined ? { long_description: payload.long_description || "" } : {}),
-      ...(payload.price !== undefined ? { price: payload.price } : {}),
+      ...(payload.price !== undefined ? { price: payload.price, base_price: payload.price } : {}),
+      ...(payload.base_price !== undefined ? { price: payload.base_price, base_price: payload.base_price } : {}),
+      ...(payload.base_currency !== undefined ? { base_currency: normalizeCurrency(payload.base_currency) } : {}),
       ...(payload.margin !== undefined ? { margin: payload.margin } : {}),
       ...(payload.cost_price !== undefined ? { cost_price: payload.cost_price } : {}),
       ...(payload.stock !== undefined ? { stock: payload.stock } : {}),
@@ -403,7 +420,7 @@ productsRouter.put("/:id", requireAuth, requireRole("admin"), async (req, res, n
       return;
     }
 
-    res.json({ data: await getProductById(req.params.id, true) });
+    res.json({ data: await getProductById(req.params.id, true, productBaseCurrency(result.value)) });
   } catch (err) {
     next(err);
   }

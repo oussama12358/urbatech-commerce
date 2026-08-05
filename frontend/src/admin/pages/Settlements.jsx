@@ -27,6 +27,7 @@ export default function Settlements() {
     if (!status) return "-";
     if (status === "paid") return t("paid");
     if (status === "pending") return t("paymentPending");
+    if (status === "processing") return "Processing";
     if (status === "denied") return t("paymentDenied");
     if (status === "refunded") return t("refunded");
     if (status === "partially_refunded") return t("partiallyRefunded");
@@ -35,7 +36,10 @@ export default function Settlements() {
   };
 
   const markPaid = async (settlement) => {
-    const reference = window.prompt(t("payoutReferencePrompt"), settlement.payout_reference || "");
+    const method = settlement.payout_method || "manual";
+    const automatic = method === "stripe_connect" || method === "paypal_payout";
+    if (automatic && !window.confirm(`Send ${money(settlement.amount || 0, settlement.currency)} to this supplier using ${method === "stripe_connect" ? "Stripe Connect" : "PayPal Payouts"}?`)) return;
+    const reference = automatic ? "" : window.prompt(t("payoutReferencePrompt"), settlement.payout_reference || "");
     if (reference === null) return;
     setBusyId(settlement.id);
     setError("");
@@ -43,7 +47,7 @@ export default function Settlements() {
       const api = createApiClient(user.token);
       await api(`/admin/settlements/${settlement.id}/pay`, {
         method: "POST",
-        body: JSON.stringify({ payment_method: "manual", payout_reference: reference })
+        body: JSON.stringify({ payment_method: method, payout_reference: reference })
       });
       await load();
     } catch (err) {
@@ -65,19 +69,21 @@ export default function Settlements() {
       <section className="panel">
         {settlements.length ? (
           <table className="table">
-            <thead><tr><th>{t("order")}</th><th>{t("supplier")}</th><th>{t("status")}</th><th>{t("amount")}</th><th>{t("commission")}</th><th>{t("reference")}</th><th></th></tr></thead>
+            <thead><tr><th>{t("order")}</th><th>{t("supplier")}</th><th>{t("status")}</th><th>{t("amount")}</th><th>{t("commission")}</th><th>{t("currency")}</th><th>{t("payoutMethod")}</th><th>{t("reference")}</th><th></th></tr></thead>
             <tbody>
               {settlements.map((settlement) => (
                 <tr key={settlement.id}>
                   <td>{settlement.order_id}</td>
                   <td>{settlement.supplier_id}</td>
                   <td>{translateStatus(settlement.status)}</td>
-                  <td>{money(settlement.amount || 0)}</td>
-                  <td>{money(settlement.commission_total || 0)}</td>
+                  <td>{money(settlement.amount || 0, settlement.currency)}</td>
+                  <td>{money(settlement.commission_total || 0, settlement.currency)}</td>
+                  <td>{settlement.currency || "USD"}</td>
+                  <td>{(settlement.payout_method || "manual").replaceAll("_", " ")}</td>
                   <td>{settlement.payout_reference || "-"}</td>
                   <td>
-                    {settlement.status !== "paid" && (
-                      <button className="icon-btn" type="button" onClick={() => markPaid(settlement)} disabled={busyId === settlement.id} title={t("markPaid") }>
+                    {settlement.status === "pending" && (
+                      <button className="icon-btn" type="button" onClick={() => markPaid(settlement)} disabled={busyId === settlement.id} title={settlement.payout_method === "stripe_connect" ? "Pay with Stripe Connect" : settlement.payout_method === "paypal_payout" ? "Pay with PayPal Payouts" : t("markPaid") }>
                         <BadgeDollarSign />
                       </button>
                     )}

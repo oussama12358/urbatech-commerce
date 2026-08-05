@@ -979,6 +979,7 @@ export default function Suppliers() {
               </div>
             </div>
             <p className="page-copy">{t("importSupplierProductsLead")}</p>
+            <p className="notice" role="note">{t("excelImportIdentityHint")}</p>
             {importError && <div className="error-message">{importError}</div>}
             <div className="form-grid two">
               <label className="field-group">

@@ -57,7 +57,7 @@ export default function OrderDetailsPage() {
               <div className="kv-row"><span>{t("payment")}</span><strong>{translatePaymentStatus(order.payment_status)}</strong></div>
               <div className="kv-row"><span>{t("carrier")}</span><strong>{order.carrier || t("notAvailableYet")}</strong></div>
               <div className="kv-row"><span>{t("tracking")}</span><strong>{order.tracking || t("notAvailableYet")}</strong></div>
-              <div className="kv-row"><span>{t("total")}</span><strong>{money(order.total)}</strong></div>
+              <div className="kv-row"><span>{t("total")}</span><strong>{money(order.total, order.currency || "USD")}</strong></div>
             </div>
             <Link className="secondary-btn" to="/orders">{t("backToOrders")}</Link>
           </div>
@@ -70,7 +70,7 @@ export default function OrderDetailsPage() {
                   <tr key={item.product_id}>
                     <td>{item.name}</td>
                     <td>{item.qty}</td>
-                    <td>{money(item.total)}</td>
+                    <td>{money(item.total, order.currency || "USD")}</td>
                   </tr>
                 ))}
               </tbody>

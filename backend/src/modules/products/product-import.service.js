@@ -4,6 +4,7 @@ import { env } from "../../config/env.js";
 import { createId, getCollection } from "../../db/mongo.js";
 import { notifyAdminLowStock } from "../notifications/notification.service.js";
 import { normalizeCountryCodes } from "../../utils/shipping-countries.js";
+import { normalizeCurrency } from "../currencies/currency.service.js";
 
 const headerAliases = {
   name: ["name", "product", "product name", "title", "designation"],
@@ -13,6 +14,7 @@ const headerAliases = {
   description: ["description", "desc", "details", "detail"],
   price: ["price", "selling price", "sale price", "retail price", "prix", "selling_price"],
   cost_price: ["cost", "cost price", "supplier cost", "wholesale price", "prix achat", "cost_price"],
+  currency: ["currency", "currency code", "devise", "base currency", "base_currency"],
   stock: ["stock", "quantity", "qty", "inventory", "disponible"],
   status: ["status", "availability", "etat", "état"],
   brand: ["brand", "marque"],
@@ -219,6 +221,8 @@ function mapRow(row) {
     category: String(get("category") || "").trim(),
     description: String(get("description") || "").trim(),
     price,
+    base_price: price,
+    base_currency: normalizeCurrency(get("currency") || "USD"),
     cost_price: costPrice,
     stock,
     margin: Math.max(0, margin),
@@ -246,6 +250,9 @@ function mapRow(row) {
 function validateProduct(row, rowNumber) {
   const errors = [];
   if (!row.name) errors.push("Missing product name.");
+  // A stable source identifier is required for safe re-imports. Without it a
+  // renamed product would look new and could be duplicated.
+  if (!row.supplier_product_id) errors.push("Missing Supplier Product ID / SKU. Keep this value unchanged on future imports.");
   if (!row.price || row.price <= 0) errors.push("Missing or invalid price.");
   if (row.stock < 0) errors.push("Invalid stock.");
   return errors.length ? { row: rowNumber, errors } : null;
@@ -374,6 +381,8 @@ export async function importSupplierProducts({ supplierId, fileName, contentBase
           name: row.name,
           description: row.description,
           price: row.price,
+          base_price: row.base_price,
+          base_currency: row.base_currency,
           cost_price: row.cost_price,
           margin: row.margin,
           stock: row.stock,

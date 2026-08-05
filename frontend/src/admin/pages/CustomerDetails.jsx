@@ -125,7 +125,7 @@ export default function CustomerDetails() {
                       <td><Link className="link-button" to={`/admin/orders/${order.id}`}>{order.id}</Link></td>
                       <td>{order.status || "-"}</td>
                       <td>{order.payment_status || "-"}</td>
-                      <td>{money(order.total)}</td>
+                      <td>{money(order.total, order.currency || "USD")}</td>
                       <td>{formatDate(order.created_at)}</td>
                     </tr>
                   ))}

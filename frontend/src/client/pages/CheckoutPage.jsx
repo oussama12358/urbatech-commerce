@@ -323,7 +323,7 @@ function PhoneInput({ phoneCode, phoneFormat, onCodeChange, name }) {
 export default function CheckoutPage() {
   const navigate = useNavigate();
   useLocale();
-  const { user, cartLines, totals, clearCart, createOrder, createCheckoutSession, paymentProviders, updateProfile } = useStore();
+  const { user, cartLines, totals, clearCart, createOrder, createCheckoutSession, paymentProviders, updateProfile, currency, currencies, setAutomaticCurrencyForCountry } = useStore();
 
   const [paymentMethod, setPaymentMethod] = useState("");
   const [selectedCountry, setSelectedCountry] = useState(() => {
@@ -335,6 +335,15 @@ export default function CheckoutPage() {
   const [phoneFormat, setPhoneFormat] = useState("");
   const redirectedRef = useRef(false);
   const enabledPaymentProviders = paymentProviders.filter((provider) => provider.enabled);
+  const selectedCurrency = currencies.find((item) => item.code === currency);
+  const availablePaymentProviders = enabledPaymentProviders.filter((provider) => {
+    const configured = provider.supported_currencies || [];
+    const registrySupportsGateway = selectedCurrency
+      ? Boolean(selectedCurrency.gateways?.[provider.provider_key])
+      : currency === "USD";
+    return registrySupportsGateway &&
+      (!configured.length || configured.includes(currency));
+  });
 
   useEffect(() => {
     if (!cartLines.length && !redirectedRef.current) {
@@ -345,15 +354,15 @@ export default function CheckoutPage() {
   }, [cartLines.length, navigate]);
 
   useEffect(() => {
-    if (!enabledPaymentProviders.length) {
+    if (!availablePaymentProviders.length) {
       setPaymentMethod("");
       return;
     }
-    const hasSelected = enabledPaymentProviders.some((provider) => provider.provider_key === paymentMethod);
+    const hasSelected = availablePaymentProviders.some((provider) => provider.provider_key === paymentMethod);
     if (!hasSelected) {
-      setPaymentMethod(enabledPaymentProviders[0].provider_key);
+      setPaymentMethod(availablePaymentProviders[0].provider_key);
     }
-  }, [enabledPaymentProviders, paymentMethod]);
+  }, [availablePaymentProviders, paymentMethod]);
 
   // For authenticated users, prefer their profile country (or empty if none).
   // For guests, subscribe to stored shipping country updates.
@@ -383,11 +392,12 @@ export default function CheckoutPage() {
       if (dial) setPhoneCode(dial);
       if (selectedCountry.phoneFormat) setPhoneFormat(selectedCountry.phoneFormat);
       writeShippingCountryCode(selectedCountry.code);
+      setAutomaticCurrencyForCountry(selectedCountry.code);
     } else {
       setPhoneCode("");
       setPhoneFormat("");
     }
-  }, [selectedCountry]);
+  }, [selectedCountry, setAutomaticCurrencyForCountry]);
 
   useEffect(() => {
     if (user?.token && selectedCountry && selectedCountry.code && user.country_code !== selectedCountry.code) {
@@ -563,7 +573,7 @@ export default function CheckoutPage() {
           <div className="payment-panel">
             <div>
               <label htmlFor="paymentMethod">{t("paymentMethod")}</label>
-              {enabledPaymentProviders.length ? (
+              {availablePaymentProviders.length ? (
                 <>
                   <select
                     id="paymentMethod"
@@ -572,15 +582,20 @@ export default function CheckoutPage() {
                     onChange={(event) => setPaymentMethod(event.target.value)}
                     required
                   >
-                    {enabledPaymentProviders.map((provider) => (
+                    {availablePaymentProviders.map((provider) => (
                       <option key={provider.provider_key} value={provider.provider_key}>
                         {provider.name}
                       </option>
                     ))}
                   </select>
                   <p className="payment-hint">{t("redirectToPayment")}</p>
+                  <p className="payment-hint payment-currency-confirmation">
+                    {t("chargedInCurrency")
+                      .replace("{amount}", money(totals.total, currency || "USD"))
+                      .replace("{currency}", currency || "USD")}
+                  </p>
                   <div className="payment-logos">
-                    {enabledPaymentProviders.map((provider) => (
+                    {availablePaymentProviders.map((provider) => (
                       <span key={provider.provider_key} className="payment-badge">
                         {provider.name}
                       </span>
@@ -599,9 +614,9 @@ export default function CheckoutPage() {
                 <button
                   className="primary-btn full-width"
                   type="submit"
-                  disabled={!enabledPaymentProviders.length || blockedItems.length > 0}
+                  disabled={!availablePaymentProviders.length || blockedItems.length > 0}
                 >
-                  {t("pay")} {enabledPaymentProviders.length ? money(totals.total) : ""}
+                  {t("pay")} {availablePaymentProviders.length ? money(totals.total) : ""}
                 </button>
                 <span className="pay-lock-badge">{t("totalSecured")}</span>
               </div>
@@ -647,8 +662,8 @@ export default function CheckoutPage() {
                       </em>
                     ) : null}
                   </span>
-                  <span>{item.qty} × {money(item.price)}</span>
-                  <strong>{money(item.qty * item.price)}</strong>
+                  <span>{item.qty} × {money(item.price, item.currency)}</span>
+                  <strong>{money(item.qty * item.price, item.currency)}</strong>
                 </div>
               );
             })}
@@ -663,11 +678,11 @@ export default function CheckoutPage() {
             <strong>{t("businessDays")}</strong>
           </div>
           <SummaryBox totals={totals} />
-          {enabledPaymentProviders.length ? (
+          {availablePaymentProviders.length ? (
             <div className="summary-supported">
               <span className="summary-supported-label">{t("acceptedPaymentMethods")}</span>
               <div className="payment-logos summary-payment-logos">
-                {enabledPaymentProviders.map((provider) => (
+                {availablePaymentProviders.map((provider) => (
                   <span key={provider.provider_key} className="payment-badge">
                     {provider.name}
                   </span>

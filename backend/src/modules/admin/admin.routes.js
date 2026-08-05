@@ -3,6 +3,8 @@ import { getAllOrders, getOrderById } from "../orders/orders.routes.js";
 import { getCollection } from "../../db/mongo.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { releaseExpiredStockReservations } from "../orders/inventory.service.js";
+import { notifyCustomerFulfillmentUpdate } from "../notifications/notification.service.js";
+import { z } from "zod";
 import { listRefunds, refundOrder } from "../refunds/refund.service.js";
 import {
   ensureSupplierSettlementsForOrder,
@@ -66,6 +68,67 @@ adminRouter.post("/orders/:id/refund", async (req, res, next) => {
   }
 });
 
+const fulfillmentUpdateSchema = z.object({
+  carrier: z.string().trim().max(120).optional(),
+  tracking: z.string().trim().max(180).optional(),
+  status: z.enum(["Processing", "Shipped", "Delivered"]).optional()
+});
+
+const settlementPayoutSchema = z.object({
+  payment_method: z.enum(["manual", "bank_transfer", "wise", "stripe_connect", "paypal_payout"]).optional(),
+  payout_reference: z.string().trim().max(180).optional(),
+  notes: z.string().trim().max(1000).optional()
+});
+
+// Used for URBA TECH stock and Excel/manual suppliers that cannot push tracking
+// through an API or webhook. API suppliers can still use their automatic flow.
+adminRouter.put("/orders/:id/fulfillment", async (req, res, next) => {
+  try {
+    const payload = fulfillmentUpdateSchema.parse(req.body || {});
+    if (!payload.carrier && !payload.tracking && !payload.status) {
+      res.status(400).json({ error: "Provide a carrier, tracking number, or fulfillment status." });
+      return;
+    }
+    const orders = await getCollection("orders");
+    const order = await orders.findOne({ id: req.params.id });
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+
+    const previousStatus = order.status;
+    const trackingChanged = Boolean(payload.tracking && payload.tracking !== order.tracking);
+    const dispatches = Array.isArray(order.supplier_dispatches) ? [...order.supplier_dispatches] : [];
+    const manualIndex = dispatches.findIndex((dispatch) => dispatch.dispatch_mode === "manual" || !dispatch.supplier_id);
+    const manualDispatch = {
+      ...(manualIndex >= 0 ? dispatches[manualIndex] : { supplier_id: null, supplier_order_id: `URBATECH-${order.id}`, dispatch_mode: "manual" }),
+      ...(payload.carrier ? { carrier: payload.carrier } : {}),
+      ...(payload.tracking ? { tracking: payload.tracking } : {}),
+      ...(payload.status ? { status: payload.status } : {}),
+      fulfilled_manually_at: new Date()
+    };
+    if (manualIndex >= 0) dispatches[manualIndex] = manualDispatch;
+    else dispatches.push(manualDispatch);
+
+    await orders.updateOne(
+      { id: order.id },
+      { $set: {
+        ...(payload.carrier ? { carrier: payload.carrier } : {}),
+        ...(payload.tracking ? { tracking: payload.tracking } : {}),
+        ...(payload.status ? { status: payload.status } : {}),
+        supplier_dispatches: dispatches,
+        fulfillment_updated_at: new Date()
+      } }
+    );
+    const updated = await getOrderById(order.id, { includeInternal: true });
+    notifyCustomerFulfillmentUpdate(order.id, payload.status || updated.status, { previousStatus, trackingChanged })
+      .catch((error) => console.error("[notification:manual-fulfillment]", error.message));
+    res.json({ data: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
 adminRouter.post("/orders/release-expired-stock", async (req, res, next) => {
   try {
     res.json({
@@ -110,7 +173,7 @@ adminRouter.post("/settlements/sync/:orderId", async (req, res, next) => {
 
 adminRouter.post("/settlements/:id/pay", async (req, res, next) => {
   try {
-    const settlement = await markSupplierSettlementPaid(req.params.id, req.body || {});
+    const settlement = await markSupplierSettlementPaid(req.params.id, settlementPayoutSchema.parse(req.body || {}));
     if (!settlement) {
       res.status(404).json({ error: "Settlement not found" });
       return;

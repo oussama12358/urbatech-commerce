@@ -16,7 +16,7 @@ import {
 
 export default function CartPage() {
   useLocale();
-  const { cartLines, changeQty, totals, user, updateProfile } = useStore();
+  const { cartLines, changeQty, totals, user, updateProfile, setAutomaticCurrencyForCountry } = useStore();
   const [shipCountryCode, setShipCountryCode] = useState(() => {
     return user?.country_code || readStoredShippingCountryCode();
   });
@@ -49,6 +49,9 @@ export default function CartPage() {
   }, [shipCountryCode, user?.token, user?.country_code, updateProfile]);
 
   const shipCountry = shipCountryCode ? getCountryByCode(shipCountryCode) : null;
+  useEffect(() => {
+    if (shipCountryCode) setAutomaticCurrencyForCountry(shipCountryCode);
+  }, [shipCountryCode, setAutomaticCurrencyForCountry]);
   const unavailableLines = shipCountry
     ? cartLines.filter((line) => isProductAvailableInCountry(line, shipCountry).available === false)
     : [];
@@ -88,7 +91,7 @@ export default function CartPage() {
                 <div>
                   <strong>{line.name}</strong>
                   <p className="desc">
-                    {money(line.price)} - {line.status}
+                    {money(line.price, line.currency)} - {line.status}
                     {outOfStock ? ` · ${t("outOfStock")}` : unavailable ? ` · ${t("notAvailableInYourCountry")}` : ""}
                   </p>
                 </div>
@@ -116,7 +119,7 @@ export default function CartPage() {
                     </div>
                   ) : null}
                 </div>
-                <strong>{money(line.price * line.qty)}</strong>
+                <strong>{money(line.price * line.qty, line.currency)}</strong>
               </div>
             );
           }) : <div className="empty">{t("cartEmpty")}</div>}

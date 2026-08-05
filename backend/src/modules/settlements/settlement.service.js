@@ -2,9 +2,11 @@ import { env } from "../../config/env.js";
 import { createId, getCollection } from "../../db/mongo.js";
 import { notifySupplierSettlementPaid } from "../notifications/notification.service.js";
 import { getPaymentProviderByKey, getStripeClient } from "../payments/payment.service.js";
+import { minorUnitMultiplier, normalizeCurrency, providerSupportsCurrency } from "../currencies/currency.service.js";
 
-function roundMoney(value) {
-  return Math.round(Number(value || 0) * 100) / 100;
+function roundMoney(value, currency = "USD") {
+  const multiplier = minorUnitMultiplier(currency);
+  return Math.round(Number(value || 0) * multiplier) / multiplier;
 }
 
 function getPayPalBase(mode) {
@@ -31,7 +33,11 @@ async function getPayPalAccessToken(config) {
 }
 
 async function executePayout(settlement, payload = {}) {
-  const method = payload.payment_method || "manual";
+  const suppliers = await getCollection("suppliers");
+  const supplier = await suppliers.findOne({ id: settlement.supplier_id });
+  if (!supplier) throw new Error("Supplier not found for payout.");
+  const method = payload.payment_method || settlement.payout_method || supplier.payout_method || "manual";
+  const currency = normalizeCurrency(settlement.currency);
   if (method === "manual" || method === "bank_transfer" || method === "wise") {
     return {
       status: payload.status || "paid",
@@ -40,25 +46,26 @@ async function executePayout(settlement, payload = {}) {
     };
   }
 
-  const suppliers = await getCollection("suppliers");
-  const supplier = await suppliers.findOne({ id: settlement.supplier_id });
-  if (!supplier) throw new Error("Supplier not found for payout.");
-
   if (method === "stripe_connect") {
     const provider = await getPaymentProviderByKey("stripe");
     const stripe = getStripeClient(provider?.config || {});
     const destination = supplier.stripe_account_id || supplier.payout_stripe_account_id;
     if (!stripe || !destination) throw new Error("Stripe Connect is not configured for this supplier.");
-    const transfer = await stripe.transfers.create({
-      amount: Math.round(Number(settlement.amount || 0) * 100),
-      currency: String(settlement.currency || "USD").toLowerCase(),
-      destination,
-      metadata: {
-        settlement_id: settlement.id,
-        order_id: settlement.order_id,
-        supplier_id: settlement.supplier_id
-      }
-    });
+    if (!providerSupportsCurrency("stripe", currency, provider.config || {})) throw new Error(`Stripe Connect does not support ${currency} for this account.`);
+    const transfer = await stripe.transfers.create(
+      {
+        amount: Math.round(Number(settlement.amount || 0) * minorUnitMultiplier(currency)),
+        currency: currency.toLowerCase(),
+        destination,
+        metadata: {
+          settlement_id: settlement.id,
+          order_id: settlement.order_id,
+          supplier_id: settlement.supplier_id
+        }
+      },
+      // A retry after a network failure must never send the supplier twice.
+      { idempotencyKey: `supplier-settlement:${settlement.id}` }
+    );
     return { status: "paid", reference: transfer.id, method };
   }
 
@@ -71,6 +78,7 @@ async function executePayout(settlement, payload = {}) {
     };
     const receiver = supplier.payout_email || supplier.paypal_email;
     if (!config.clientId || !config.clientSecret || !receiver) throw new Error("PayPal Payouts are not configured for this supplier.");
+    if (!providerSupportsCurrency("paypal", currency, provider?.config || {})) throw new Error(`PayPal Payouts does not support ${currency} for this account.`);
     const paypalBase = getPayPalBase(config.mode);
     const accessToken = await getPayPalAccessToken(config);
     const payoutRes = await fetch(`${paypalBase}/v1/payments/payouts`, {
@@ -89,8 +97,8 @@ async function executePayout(settlement, payload = {}) {
             recipient_type: "EMAIL",
             receiver,
             amount: {
-              value: Number(settlement.amount || 0).toFixed(2),
-              currency: settlement.currency || "USD"
+              value: Number(settlement.amount || 0).toFixed(minorUnitMultiplier(currency) === 1 ? 0 : 2),
+              currency
             },
             note: `Payout for order ${settlement.order_id}`,
             sender_item_id: settlement.id
@@ -109,14 +117,17 @@ async function executePayout(settlement, payload = {}) {
 export async function ensureSupplierSettlementsForOrder(orderId) {
   const orders = await getCollection("orders");
   const settlements = await getCollection("supplier_settlements");
+  const suppliers = await getCollection("suppliers");
   const order = await orders.findOne({ id: orderId });
   if (!order || order.payment_status !== "paid") return [];
 
   const dispatches = (order.supplier_dispatches || []).filter((dispatch) => dispatch.supplier_id);
   const results = [];
   for (const dispatch of dispatches) {
-    const amount = roundMoney(dispatch.supplier_payable || 0);
+    const currency = normalizeCurrency(order.currency);
+    const amount = roundMoney(dispatch.supplier_payable || 0, currency);
     if (amount <= 0) continue;
+    const supplier = await suppliers.findOne({ id: dispatch.supplier_id }, { projection: { payout_method: 1 } });
 
     const now = new Date();
     const doc = {
@@ -124,8 +135,9 @@ export async function ensureSupplierSettlementsForOrder(orderId) {
       supplier_id: dispatch.supplier_id,
       supplier_order_id: dispatch.supplier_order_id || null,
       amount,
-      commission_total: roundMoney(dispatch.commission_total || 0),
-      currency: order.currency || "USD",
+      commission_total: roundMoney(dispatch.commission_total || 0, currency),
+      currency,
+      payout_method: supplier?.payout_method || "manual",
       status: "pending",
       payment_method: null,
       payout_reference: null,
@@ -144,6 +156,7 @@ export async function ensureSupplierSettlementsForOrder(orderId) {
           status: doc.status,
           payment_method: doc.payment_method,
           payout_reference: doc.payout_reference,
+          payout_method: doc.payout_method,
           created_at: doc.created_at
         },
         $set: {
@@ -163,18 +176,34 @@ export async function ensureSupplierSettlementsForOrder(orderId) {
 
 export async function listSupplierSettlements({ status = null, supplierId = null } = {}) {
   const settlements = await getCollection("supplier_settlements");
+  const suppliers = await getCollection("suppliers");
   const query = {
     ...(status ? { status } : {}),
     ...(supplierId ? { supplier_id: supplierId } : {})
   };
-  return settlements.find(query).project({ _id: 0 }).sort({ created_at: -1 }).limit(500).toArray();
+  const rows = await settlements.find(query).project({ _id: 0 }).sort({ created_at: -1 }).limit(500).toArray();
+  const supplierIds = [...new Set(rows.map((row) => row.supplier_id).filter(Boolean))];
+  if (!supplierIds.length) return rows;
+  const supplierRows = await suppliers.find({ id: { $in: supplierIds } }, { projection: { _id: 0, id: 1, payout_method: 1 } }).toArray();
+  const payoutMethodBySupplier = new Map(supplierRows.map((supplier) => [supplier.id, supplier.payout_method || "manual"]));
+  return rows.map((row) => ({ ...row, payout_method: row.payout_method || payoutMethodBySupplier.get(row.supplier_id) || "manual" }));
 }
 
 export async function markSupplierSettlementPaid(id, payload = {}) {
   const settlements = await getCollection("supplier_settlements");
-  const settlement = await settlements.findOne({ id });
+  const settlement = await settlements.findOneAndUpdate(
+    { id, status: "pending" },
+    { $set: { status: "processing", updated_at: new Date() } },
+    { returnDocument: "before", projection: { _id: 0 } }
+  );
   if (!settlement) return null;
-  const payout = await executePayout(settlement, payload);
+  let payout;
+  try {
+    payout = await executePayout(settlement, payload);
+  } catch (error) {
+    await settlements.updateOne({ id, status: "processing" }, { $set: { status: "pending", updated_at: new Date() } });
+    throw error;
+  }
   const update = {
     status: payout.status,
     payment_method: payout.method,

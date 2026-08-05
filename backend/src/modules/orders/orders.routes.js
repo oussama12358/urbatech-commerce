@@ -9,6 +9,7 @@ import {
   countryName,
   toCountryCode
 } from "../../utils/shipping-countries.js";
+import { getExchangeQuote, productBaseCurrency, sellingBasePrice, normalizeCurrency, roundCurrency } from "../currencies/currency.service.js";
 
 const orderSchema = z.object({
   billing: z.record(z.any()).default({}),
@@ -17,7 +18,8 @@ const orderSchema = z.object({
       id: z.string(),
       qty: z.number().int().positive()
     })
-  )
+  ),
+  currency: z.string().length(3).optional()
 });
 export const ordersRouter = Router();
 
@@ -35,6 +37,7 @@ function serializeOrder(order, items = [], { includeInternal = false } = {}) {
     service_fee: order.service_fee,
     shipping: order.shipping,
     total: order.total,
+    currency: order.currency || "USD",
     billing: order.billing,
     tracking: order.tracking || null,
     carrier: order.carrier || null,
@@ -74,14 +77,15 @@ function serializeOrder(order, items = [], { includeInternal = false } = {}) {
       stock_reserved: Boolean(order.stock_reserved),
       stock_released_at: order.stock_released_at || null,
       refund_status: order.refund_status || null,
-      refund_amount: order.refund_amount || 0
+      refund_amount: order.refund_amount || 0,
+      exchange_rate_snapshot: order.exchange_rate_snapshot || null
     };
   }
 
   return serialized;
 }
 
-async function buildTrustedOrderItems(payloadItems, billing = {}) {
+async function buildTrustedOrderItems(payloadItems, billing = {}, currency = "USD") {
   const products = await getCollection("products");
   const suppliers = await getCollection("suppliers");
   const quantities = new Map();
@@ -132,11 +136,15 @@ async function buildTrustedOrderItems(payloadItems, billing = {}) {
   let supplierPayable = 0;
   let productCommission = 0;
 
-  const items = productIds.map((productId) => {
+  const items = await Promise.all(productIds.map(async (productId) => {
     const product = productMap.get(productId);
     const quantity = quantities.get(productId);
-    const unitPrice = roundMoney(product.price);
-    const costPrice = roundMoney(product.cost_price ?? product.price);
+    const baseCurrency = productBaseCurrency(product);
+    const baseUnitPrice = sellingBasePrice(product);
+    const unitQuote = await getExchangeQuote(baseUnitPrice, baseCurrency, currency);
+    const costQuote = await getExchangeQuote(product.cost_price ?? baseUnitPrice, baseCurrency, currency);
+    const unitPrice = unitQuote.amount;
+    const costPrice = costQuote.amount;
     const lineTotal = roundMoney(unitPrice * quantity);
     const supplierTotal = roundMoney(costPrice * quantity);
     const commission = roundMoney(Math.max(0, lineTotal - supplierTotal));
@@ -151,6 +159,11 @@ async function buildTrustedOrderItems(payloadItems, billing = {}) {
       product_id: productId,
       name: product.name,
       quantity,
+      base_unit_price: baseUnitPrice,
+      base_currency: baseCurrency,
+      order_currency: currency,
+      exchange_rate: unitQuote.rate,
+      exchange_rate_as_of: unitQuote.fetched_at,
       unit_price: unitPrice,
       cost_price: costPrice,
       total: lineTotal,
@@ -160,7 +173,7 @@ async function buildTrustedOrderItems(payloadItems, billing = {}) {
       commission,
       commission_rate: commissionRate
     };
-  });
+  }));
 
   return { items, subtotal, supplierPayable, productCommission };
 }
@@ -173,6 +186,11 @@ function itemProjection(includeInternal = false) {
     quantity: 1,
     unit_price: 1,
     total: 1,
+    base_unit_price: 1,
+    base_currency: 1,
+    order_currency: 1,
+    exchange_rate: 1,
+    exchange_rate_as_of: 1,
     ...(includeInternal
       ? {
           supplier_id: 1,
@@ -229,11 +247,14 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
   try {
     const payload = orderSchema.parse(req.body);
     const billing = payload.billing || {};
-    const trusted = await buildTrustedOrderItems(payload.items, billing);
+    const currency = normalizeCurrency(payload.currency || "USD");
+    const trusted = await buildTrustedOrderItems(payload.items, billing, currency);
     const subtotal = trusted.subtotal;
-    const service = roundMoney(subtotal * 0.03);
-    const shipping = subtotal ? 120 : 0;
-    const total = roundMoney(subtotal + service + shipping);
+    const service = roundCurrency(subtotal * 0.03, currency);
+    // Shipping is configured in USD and converted dynamically at order creation.
+    const shippingQuote = subtotal ? await getExchangeQuote(120, "USD", currency) : null;
+    const shipping = shippingQuote?.amount || 0;
+    const total = roundCurrency(subtotal + service + shipping, currency);
     const platformCommission = roundMoney(trusted.productCommission + service);
 
     const customerId = req.user.id;
@@ -260,6 +281,12 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
         service_fee: service,
         shipping,
         total,
+        currency,
+        exchange_rate_snapshot: {
+          rate_provider_base: "USD",
+          shipping_usd_to_order_rate: shippingQuote?.rate || 1,
+          fetched_at: shippingQuote?.fetched_at || new Date()
+        },
         supplier_payable: trusted.supplierPayable,
         product_commission: trusted.productCommission,
         platform_commission: platformCommission,
