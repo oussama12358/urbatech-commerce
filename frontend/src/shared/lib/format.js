@@ -1,5 +1,8 @@
 export function money(value, currency) {
-  const code = currency || localStorage.getItem("ut_currency") || "USD";
+  // A stale browser value may contain JSON quotes (for example `"TND"`).
+  // Never pass that invalid value to Intl or display it to an administrator.
+  const rawCode = String(currency || localStorage.getItem("ut_currency") || "USD").trim().replace(/["']/g, "").toUpperCase();
+  const code = /^[A-Z]{3}$/.test(rawCode) ? rawCode : "USD";
   try {
     // A stable locale avoids quoted ISO codes in browsers whose UI locale is RTL.
     return new Intl.NumberFormat("en-US", {

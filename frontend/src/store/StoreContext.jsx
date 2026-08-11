@@ -136,6 +136,7 @@ export function StoreProvider({ children }) {
         }
         if (currenciesJson?.data && mounted) setCurrencies(currenciesJson.data);
       } catch (err) {
+        console.error('[StoreContext] Failed to load store data:', err?.message || err);
         localStorage.removeItem(KEYS.products);
         localStorage.removeItem(KEYS.categories);
         localStorage.removeItem(KEYS.settings);
@@ -570,7 +571,9 @@ export function StoreProvider({ children }) {
 
   const cartCount = cartLines.reduce((sum, line) => sum + line.qty, 0);
   const subtotal = cartLines.reduce((sum, line) => sum + line.price * line.qty, 0);
-  const service = subtotal ? Math.round(subtotal * 0.03) : 0;
+  // Product prices already include URBA TECH's margin; checkout does not add
+  // a separate service fee.
+  const service = 0;
   const shipping = subtotal ? shippingEstimate : 0;
   const totals = { subtotal, service, shipping, total: subtotal + service + shipping };
 

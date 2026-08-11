@@ -135,7 +135,6 @@ export async function ensureSupplierSettlementsForOrder(orderId) {
       supplier_id: dispatch.supplier_id,
       supplier_order_id: dispatch.supplier_order_id || null,
       amount,
-      commission_total: roundMoney(dispatch.commission_total || 0, currency),
       currency,
       payout_method: supplier?.payout_method || "manual",
       status: "pending",
@@ -162,7 +161,6 @@ export async function ensureSupplierSettlementsForOrder(orderId) {
         $set: {
           supplier_order_id: doc.supplier_order_id,
           amount: doc.amount,
-          commission_total: doc.commission_total,
           updated_at: now
         }
       },
@@ -226,13 +224,15 @@ export async function summarizeSupplierSettlements() {
   return rows.reduce(
     (summary, item) => {
       const amount = Number(item.amount || 0);
-      if (item.status === "paid") summary.paid += amount;
-      else if (item.status === "failed") summary.failed += amount;
-      else if (item.status === "cancelled") summary.cancelled += amount;
-      else if (item.status === "held") summary.held += amount;
-      else summary.pending += amount;
+      const currency = normalizeCurrency(item.currency || "USD");
+      const bucket = item.status === "paid" ? "paid"
+        : item.status === "failed" ? "failed"
+          : item.status === "cancelled" ? "cancelled"
+            : item.status === "held" ? "held"
+              : "pending";
+      summary[bucket][currency] = Number(summary[bucket][currency] || 0) + amount;
       return summary;
     },
-    { pending: 0, paid: 0, failed: 0, held: 0, cancelled: 0 }
+    { pending: {}, paid: {}, failed: {}, held: {}, cancelled: {} }
   );
 }

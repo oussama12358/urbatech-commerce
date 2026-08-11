@@ -1,8 +1,12 @@
 import { money } from "../../shared/lib/format.js";
 import { t, useLocale } from "../../i18n.js";
 
-export default function DashboardCards({ productsCount, suppliersCount, ordersCount, revenue }) {
+export default function DashboardCards({ productsCount, suppliersCount, ordersCount, revenueByCurrency = {} }) {
   useLocale();
+  const revenueRows = Object.entries(revenueByCurrency);
+  const revenue = revenueRows.length
+    ? revenueRows.map(([currency, amount]) => money(amount, currency)).join(" · ")
+    : money(0, "USD");
 
   return (
     <section className="dashboard-stats stats">
@@ -19,7 +23,7 @@ export default function DashboardCards({ productsCount, suppliersCount, ordersCo
         <span>{t("orders")}</span>
       </div>
       <div className="stat">
-        <strong>{money(revenue)}</strong>
+        <strong>{revenue}</strong>
         <span>{t("totalPipeline")}</span>
       </div>
     </section>

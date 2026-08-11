@@ -5,6 +5,14 @@ import { requireAuth, requireRole, optionalAuth } from "../../middleware/auth.js
 import { normalizeCountryCodes, resolveShipsToCountries } from "../../utils/shipping-countries.js";
 import { convertAmount, productBaseCurrency, sellingBasePrice, normalizeCurrency } from "../currencies/currency.service.js";
 
+function marginFrom(price, cost) {
+  const sellingPrice = Number(price || 0);
+  if (!sellingPrice) return 0;
+  // A negative margin is meaningful: it warns that the product is being sold
+  // below cost. Never hide that loss by coercing it to zero.
+  return Math.round(((sellingPrice - Number(cost || 0)) / sellingPrice) * 10000) / 100;
+}
+
 const createProductSchema = z.object({
   name: z.string().min(2),
   category: z.string().min(1).optional(),
@@ -12,7 +20,8 @@ const createProductSchema = z.object({
   base_price: z.number().positive().optional(),
   base_currency: z.string().length(3).optional(),
   stock: z.number().int().nonnegative(),
-  margin: z.number().nonnegative(),
+  // Kept optional for older imports. It is always derived from selling and cost price.
+  margin: z.number().nonnegative().optional(),
   status: z.string().min(1).optional(),
   description: z.string().optional(),
   long_description: z.string().optional(),
@@ -153,7 +162,7 @@ async function serializeProduct(product, categoryName = null, includeInternal = 
     serialized.base_price = sellingBasePrice(product);
     serialized.base_currency = productBaseCurrency(product);
     serialized.cost_price = product.cost_price || 0;
-    serialized.margin = product.margin || 0;
+    serialized.margin = marginFrom(sellingBasePrice(product), product.cost_price);
     serialized.auto_sync = Boolean(product.auto_sync);
     serialized.supplier_id = product.supplier_id || null;
     serialized.supplier_product_id = product.supplier_product_id || "";
@@ -280,7 +289,6 @@ productsRouter.post("/", requireAuth, requireRole("admin"), async (req, res, nex
       price: payload.base_price ?? payload.price,
       base_price: payload.base_price ?? payload.price,
       base_currency: normalizeCurrency(payload.base_currency || "USD"),
-      margin: payload.margin || 0,
       cost_price: payload.cost_price || 0,
       stock: payload.stock || 0,
       supplier_id: payload.supplier_id || null,
@@ -319,6 +327,7 @@ productsRouter.post("/", requireAuth, requireRole("admin"), async (req, res, nex
       active: true,
       created_at: new Date()
     };
+    product.margin = marginFrom(product.base_price, product.cost_price);
     await products.insertOne(product);
 
     res.status(201).json({ data: await getProductById(id, true, productBaseCurrency(product)) });
@@ -362,7 +371,6 @@ productsRouter.put("/:id", requireAuth, requireRole("admin"), async (req, res, n
       ...(payload.price !== undefined ? { price: payload.price, base_price: payload.price } : {}),
       ...(payload.base_price !== undefined ? { price: payload.base_price, base_price: payload.base_price } : {}),
       ...(payload.base_currency !== undefined ? { base_currency: normalizeCurrency(payload.base_currency) } : {}),
-      ...(payload.margin !== undefined ? { margin: payload.margin } : {}),
       ...(payload.cost_price !== undefined ? { cost_price: payload.cost_price } : {}),
       ...(payload.stock !== undefined ? { stock: payload.stock } : {}),
       ...(payload.supplier_id !== undefined ? { supplier_id: payload.supplier_id || null } : {}),
@@ -398,6 +406,10 @@ productsRouter.put("/:id", requireAuth, requireRole("admin"), async (req, res, n
       ...(specs !== undefined ? { specs } : {}),
       updated_at: new Date()
     };
+    updateDoc.margin = marginFrom(
+      updateDoc.base_price ?? sellingBasePrice(existing),
+      updateDoc.cost_price ?? existing.cost_price
+    );
 
     if (
       payload.barcode !== undefined ||
@@ -415,12 +427,13 @@ productsRouter.put("/:id", requireAuth, requireRole("admin"), async (req, res, n
       { returnDocument: "after" }
     );
 
-    if (!result.value) {
+    // MongoDB driver v7 returns the document directly (not { value: document }).
+    if (!result) {
       res.status(404).json({ error: "Product not found" });
       return;
     }
 
-    res.json({ data: await getProductById(req.params.id, true, productBaseCurrency(result.value)) });
+    res.json({ data: await getProductById(req.params.id, true, productBaseCurrency(result)) });
   } catch (err) {
     next(err);
   }
@@ -434,7 +447,8 @@ productsRouter.delete("/:id", requireAuth, requireRole("admin"), async (req, res
       { $set: { active: false } },
       { returnDocument: "after" }
     );
-    if (!result.value) {
+    // MongoDB driver v7 returns the document directly (not { value: document }).
+    if (!result) {
       res.status(404).json({ error: "Product not found" });
       return;
     }

@@ -102,6 +102,30 @@ function rows(items = [], currency = "USD") {
   `;
 }
 
+// Suppliers must receive only what is needed to fulfill the order. In
+// particular, never include customer selling prices, totals, costs, or margin.
+function supplierRows(items = []) {
+  if (!items.length) return "";
+  const itemRows = items
+    .map((item) => `
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #edf1f7">${escapeHtml(item.name || item.product_id)}</td>
+        <td style="padding:8px;border-bottom:1px solid #edf1f7;text-align:center">${Number(item.quantity || item.qty || 0)}</td>
+      </tr>`)
+    .join("");
+  return `
+    <table style="width:100%;border-collapse:collapse;margin:18px 0;font-size:14px">
+      <thead>
+        <tr>
+          <th style="padding:8px;text-align:left;border-bottom:2px solid #dbe3ef">Product</th>
+          <th style="padding:8px;text-align:center;border-bottom:2px solid #dbe3ef">Qty</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+  `;
+}
+
 async function loadOrderWithItems(orderId) {
   const orders = await getCollection("orders");
   const orderItems = await getCollection("order_items");
@@ -301,10 +325,9 @@ export async function notifySupplierNewOrder(orderId, supplierId, dispatch = {})
           <strong>Phone:</strong> ${escapeHtml(customer.phone || "-")}<br>
           <strong>Address:</strong> ${escapeHtml(customer.address || customer.shippingAddress || "-")}
         </p>
-        ${rows(supplierItems, currency)}
+        ${supplierRows(supplierItems)}
         <p>
-          <strong>Supplier payable:</strong> ${money(dispatch.supplier_payable, currency)}<br>
-          <strong>Platform commission:</strong> ${money(dispatch.commission_total, currency)}
+          <strong>Supplier payable:</strong> ${money(dispatch.supplier_payable, currency)}
         </p>
       `
     )

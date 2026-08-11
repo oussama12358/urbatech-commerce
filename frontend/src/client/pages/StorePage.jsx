@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Hero from "../components/Hero.jsx";
 import ProductCard from "../components/ProductCard.jsx";
@@ -13,6 +13,9 @@ export default function StorePage() {
   const allLabel = t("all");
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
+  const [currencyQuery, setCurrencyQuery] = useState("");
+  const [currencyMenuOpen, setCurrencyMenuOpen] = useState(false);
+  const currencyMenuRef = useRef(null);
   const [sort, setSort] = useState("featured");
   const [maxPrice, setMaxPrice] = useState(6500);
   const categories = useMemo(() => ["all", ...new Set(products.map((item) => item.category))], [products]);
@@ -20,12 +23,34 @@ export default function StorePage() {
     const maximum = Math.max(0, ...products.map((product) => Number(product.price || 0)));
     return Math.max(100, Math.ceil(maximum / 100) * 100);
   }, [products]);
+  const currencyOptions = useMemo(() => {
+    const term = currencyQuery.trim().toLowerCase();
+    const list = currencies.length ? currencies : [{ code: "USD", name: "US Dollar", symbol: "$" }];
+    if (!term) return list;
+    return list.filter((item) => [item.code, item.name, item.symbol].filter(Boolean).join(" ").toLowerCase().includes(term));
+  }, [currencies, currencyQuery]);
 
   useEffect(() => {
     // Refreshing rates/currency changes numeric values, so a stale fixed cap
     // must never make the catalogue look empty.
     setMaxPrice(priceRangeMax);
   }, [currency, priceRangeMax]);
+
+  useEffect(() => {
+    const closeMenu = (event) => {
+      if (!currencyMenuRef.current?.contains(event.target)) setCurrencyMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeMenu);
+    return () => document.removeEventListener("mousedown", closeMenu);
+  }, []);
+
+  const selectedCurrency = currencies.find((item) => item.code === currency);
+  const chooseCurrency = (code) => {
+    setCurrencyQuery("");
+    setCurrencyMenuOpen(false);
+    if (code) setCurrency(code);
+    else resetToProductCurrencies();
+  };
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -65,24 +90,40 @@ export default function StorePage() {
 
       <section className="layout">
         <aside className="filters">
-          <h2 className="section-title">{t("categoriesTitle")}</h2>
-          <div className="filter-list">
-            {categories.map((item) => (
-              <button className={`filter-chip ${category === item ? "active" : ""}`} key={item} onClick={() => setCategory(item)}>
-                <span>{item === "all" ? allLabel : item}</span>
-                <span>{item === "all" ? products.length : products.filter((product) => product.category === item).length}</span>
-              </button>
-            ))}
-          </div>
-          <label className="field-group store-currency-select">
+          <div className="field-group store-currency-select">
             <span>Currency</span>
-            <select className="select" value={currency || ""} onChange={(event) => event.target.value ? setCurrency(event.target.value) : resetToProductCurrencies()}>
-              <option value="">{t("productOriginalCurrency")}</option>
-              {(currencies.length ? currencies : [{ code: "USD", name: "US Dollar" }]).map((item) => (
-                <option key={item.code} value={item.code}>{currencyOptionLabel(item)}</option>
-              ))}
-            </select>
-          </label>
+            <div className="currency-combobox" ref={currencyMenuRef}>
+              <button
+                type="button"
+                className="select currency-combobox-trigger"
+                onClick={() => setCurrencyMenuOpen((open) => !open)}
+                aria-expanded={currencyMenuOpen}
+              >
+                <span>{selectedCurrency ? currencyOptionLabel(selectedCurrency) : t("productOriginalCurrency")}</span>
+                <span aria-hidden="true">⌄</span>
+              </button>
+              {currencyMenuOpen ? (
+                <div className="currency-combobox-menu">
+                  <input
+                    className="input currency-search"
+                    type="search"
+                    autoFocus
+                    placeholder="Search currency..."
+                    value={currencyQuery}
+                    onChange={(event) => setCurrencyQuery(event.target.value)}
+                    aria-label="Search currency"
+                  />
+                  <div className="currency-combobox-options" role="listbox">
+                    <button type="button" className="currency-combobox-option" onClick={() => chooseCurrency("")}>{t("productOriginalCurrency")}</button>
+                    {currencyOptions.map((item) => (
+                      <button type="button" className="currency-combobox-option" key={item.code} onClick={() => chooseCurrency(item.code)}>{currencyOptionLabel(item)}</button>
+                    ))}
+                    {!currencyOptions.length ? <p className="currency-combobox-empty">No currencies found.</p> : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
           {currency ? (
             <>
               <h2 className="section-title">{t("maxPriceTitle")}</h2>
@@ -92,6 +133,15 @@ export default function StorePage() {
               </div>
             </>
           ) : null}
+          <h2 className="section-title">{t("categoriesTitle")}</h2>
+          <div className="filter-list">
+            {categories.map((item) => (
+              <button className={`filter-chip ${category === item ? "active" : ""}`} key={item} onClick={() => setCategory(item)}>
+                <span>{item === "all" ? allLabel : item}</span>
+                <span>{item === "all" ? products.length : products.filter((product) => product.category === item).length}</span>
+              </button>
+            ))}
+          </div>
         </aside>
 
         <section>

@@ -69,7 +69,7 @@ export default function Settlements() {
       <section className="panel">
         {settlements.length ? (
           <table className="table">
-            <thead><tr><th>{t("order")}</th><th>{t("supplier")}</th><th>{t("status")}</th><th>{t("amount")}</th><th>{t("commission")}</th><th>{t("currency")}</th><th>{t("payoutMethod")}</th><th>{t("reference")}</th><th></th></tr></thead>
+            <thead><tr><th>{t("order")}</th><th>{t("supplier")}</th><th>{t("status")}</th><th>{t("amount")}</th><th>{t("currency")}</th><th>{t("payoutMethod")}</th><th>{t("reference")}</th><th></th></tr></thead>
             <tbody>
               {settlements.map((settlement) => (
                 <tr key={settlement.id}>
@@ -77,7 +77,6 @@ export default function Settlements() {
                   <td>{settlement.supplier_id}</td>
                   <td>{translateStatus(settlement.status)}</td>
                   <td>{money(settlement.amount || 0, settlement.currency)}</td>
-                  <td>{money(settlement.commission_total || 0, settlement.currency)}</td>
                   <td>{settlement.currency || "USD"}</td>
                   <td>{(settlement.payout_method || "manual").replaceAll("_", " ")}</td>
                   <td>{settlement.payout_reference || "-"}</td>

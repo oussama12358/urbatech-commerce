@@ -56,8 +56,7 @@ function serializeOrder(order, items = [], { includeInternal = false } = {}) {
             supplier_product_id: item.supplier_product_id || null,
             cost_price: item.cost_price || 0,
             supplier_total: item.supplier_total || 0,
-            commission: item.commission || 0,
-            commission_rate: item.commission_rate || 0
+            gross_profit: item.gross_profit ?? item.commission ?? 0
           }
         : {})
     }))
@@ -72,8 +71,7 @@ function serializeOrder(order, items = [], { includeInternal = false } = {}) {
       supplier_dispatch_failures: order.supplier_dispatch_failures || [],
       supplier_dispatch_error: order.supplier_dispatch_error || null,
       supplier_payable: order.supplier_payable || 0,
-      product_commission: order.product_commission || 0,
-      platform_commission: order.platform_commission || 0,
+      gross_profit: order.gross_profit ?? order.platform_commission ?? order.product_commission ?? 0,
       stock_reserved: Boolean(order.stock_reserved),
       stock_released_at: order.stock_released_at || null,
       refund_status: order.refund_status || null,
@@ -134,7 +132,7 @@ async function buildTrustedOrderItems(payloadItems, billing = {}, currency = "US
 
   let subtotal = 0;
   let supplierPayable = 0;
-  let productCommission = 0;
+  let grossProfit = 0;
 
   const items = await Promise.all(productIds.map(async (productId) => {
     const product = productMap.get(productId);
@@ -147,12 +145,11 @@ async function buildTrustedOrderItems(payloadItems, billing = {}, currency = "US
     const costPrice = costQuote.amount;
     const lineTotal = roundMoney(unitPrice * quantity);
     const supplierTotal = roundMoney(costPrice * quantity);
-    const commission = roundMoney(Math.max(0, lineTotal - supplierTotal));
-    const commissionRate = lineTotal ? Math.round((commission / lineTotal) * 10000) / 100 : 0;
+    const grossProfitLine = roundMoney(lineTotal - supplierTotal);
 
     subtotal = roundMoney(subtotal + lineTotal);
     supplierPayable = roundMoney(supplierPayable + supplierTotal);
-    productCommission = roundMoney(productCommission + commission);
+    grossProfit = roundMoney(grossProfit + grossProfitLine);
 
     return {
       order_id: null,
@@ -170,12 +167,11 @@ async function buildTrustedOrderItems(payloadItems, billing = {}, currency = "US
       supplier_id: product.supplier_id || null,
       supplier_product_id: product.supplier_product_id || null,
       supplier_total: supplierTotal,
-      commission,
-      commission_rate: commissionRate
+      gross_profit: grossProfitLine
     };
   }));
 
-  return { items, subtotal, supplierPayable, productCommission };
+  return { items, subtotal, supplierPayable, grossProfit };
 }
 
 function itemProjection(includeInternal = false) {
@@ -197,8 +193,9 @@ function itemProjection(includeInternal = false) {
           supplier_product_id: 1,
           cost_price: 1,
           supplier_total: 1,
-          commission: 1,
-          commission_rate: 1
+          gross_profit: 1,
+          // Legacy fields remain readable for existing test/history records.
+          commission: 1
         }
       : {})
   };
@@ -250,12 +247,13 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
     const currency = normalizeCurrency(payload.currency || "USD");
     const trusted = await buildTrustedOrderItems(payload.items, billing, currency);
     const subtotal = trusted.subtotal;
-    const service = roundCurrency(subtotal * 0.03, currency);
+    // Product selling price already contains URBA TECH's profit. Do not add a
+    // second service fee at checkout.
+    const service = 0;
     // Shipping is configured in USD and converted dynamically at order creation.
     const shippingQuote = subtotal ? await getExchangeQuote(120, "USD", currency) : null;
     const shipping = shippingQuote?.amount || 0;
-    const total = roundCurrency(subtotal + service + shipping, currency);
-    const platformCommission = roundMoney(trusted.productCommission + service);
+    const total = roundCurrency(subtotal + shipping, currency);
 
     const customerId = req.user.id;
     const id = "UT-" + Date.now().toString().slice(-6);
@@ -278,7 +276,6 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
         status: "Payment pending",
         payment_status: "pending",
         subtotal,
-        service_fee: service,
         shipping,
         total,
         currency,
@@ -288,8 +285,7 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
           fetched_at: shippingQuote?.fetched_at || new Date()
         },
         supplier_payable: trusted.supplierPayable,
-        product_commission: trusted.productCommission,
-        platform_commission: platformCommission,
+        gross_profit: trusted.grossProfit,
         stock_reserved: true,
         stock_reserved_at: new Date(),
         billing,

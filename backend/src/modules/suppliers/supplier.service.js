@@ -376,7 +376,7 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
     const cost = roundMoney(costPrice ?? unitPrice);
     const supplierTotal = roundMoney((item.supplier_total ?? cost * quantity));
     const lineTotal = roundMoney(item.total ?? unitPrice * quantity);
-    const commission = roundMoney(item.commission ?? Math.max(0, lineTotal - supplierTotal));
+    const grossProfit = roundMoney(item.gross_profit ?? item.commission ?? (lineTotal - supplierTotal));
 
     grouped.get(supplierId).push({
       product_id: supplierProductId,
@@ -386,8 +386,7 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
       unit_price: unitPrice,
       cost_price: cost,
       supplier_total: supplierTotal,
-      commission,
-      commission_rate: item.commission_rate || (lineTotal ? Math.round((commission / lineTotal) * 10000) / 100 : 0)
+      gross_profit: grossProfit
     });
   }
 
@@ -418,13 +417,11 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
       continue;
     }
     const supplierSubtotal = roundMoney(supplierItems.reduce((sum, item) => sum + Number(item.supplier_total || 0), 0));
-    const commissionTotal = roundMoney(supplierItems.reduce((sum, item) => sum + Number(item.commission || 0), 0));
     if (!supplier.api_url || !supplier.supports_orders || !onlineSupplierStatuses.includes(supplier.status)) {
       const manualDispatch = {
         supplier_id: supplierId,
         supplier_order_id: `MANUAL-${order.id}-${String(supplierId).slice(0, 8)}`,
         supplier_payable: supplierSubtotal,
-        commission_total: commissionTotal,
         status: "Manual fulfillment pending",
         dispatch_mode: "manual",
         dispatched_at: new Date()
@@ -437,6 +434,13 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
 
     const adapter = getSupplierAdapter(supplier);
     try {
+      const supplierInvoiceItems = supplierItems.map((item) => ({
+        product_id: item.product_id,
+        local_product_id: item.local_product_id,
+        name: item.name,
+        quantity: item.quantity,
+        supplier_total: item.supplier_total
+      }));
       const response = await adapter.createOrder({
         order_id: order.id,
         items: supplierItems,
@@ -449,29 +453,20 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
           supplier_id: supplierId,
           currency: order.currency || "USD",
           customer,
-          items: supplierItems,
+          items: supplierInvoiceItems,
           supplier_subtotal: supplierSubtotal,
-          commission_total: commissionTotal,
           supplier_payable: supplierSubtotal
-        },
-        metadata: {
-          platform_commission: roundMoney(commissionTotal + Number(order.service_fee || 0)),
-          product_commission: commissionTotal,
-          service_fee: roundMoney(order.service_fee),
-          customer_total: roundMoney(order.total)
         }
       });
       dispatches.push({
         supplier_id: supplierId,
         supplier_payable: supplierSubtotal,
-        commission_total: commissionTotal,
         dispatched_at: new Date(),
         ...response
       });
       notifySupplierNewOrder(order.id, supplierId, {
         supplier_id: supplierId,
         supplier_payable: supplierSubtotal,
-        commission_total: commissionTotal,
         ...response
       }).catch((notifyErr) => console.error("[notification:supplier-new-order]", notifyErr.message));
       await markSupplierDispatchRetryDone(order.id, supplierId);

@@ -90,7 +90,15 @@ async function ensureSupplierProductIndex(database) {
     supplier_id: { $type: "string" },
     supplier_product_id: { $type: "string" }
   };
-  const existing = (await products.indexes()).find((index) => index.name === indexName);
+  // On a fresh database the collection does not exist yet. `indexes()` throws
+  // NamespaceNotFound in that case, while `createIndex()` safely creates it.
+  let existingIndexes = [];
+  try {
+    existingIndexes = await products.indexes();
+  } catch (error) {
+    if (error?.code !== 26 && error?.codeName !== "NamespaceNotFound") throw error;
+  }
+  const existing = existingIndexes.find((index) => index.name === indexName);
 
   if (
     existing?.partialFilterExpression &&

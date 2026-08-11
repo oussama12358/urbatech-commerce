@@ -12,10 +12,6 @@ function numberValue(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function computedPrice(cost, margin) {
-  return Math.round(cost * (1 + margin / 100) * 100) / 100;
-}
-
 function RequiredLabel({ children }) {
   return (
     <span className="required-label">
@@ -41,28 +37,15 @@ export default function AddProduct() {
   const [error, setError] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [costPrice, setCostPrice] = useState("");
-  const [margin, setMargin] = useState("");
   const [price, setPrice] = useState("");
+  const [baseCurrency, setBaseCurrency] = useState("USD");
+  const [shipsToCountries, setShipsToCountries] = useState("");
   const [images, setImages] = useState([]);
   const hasNewCategory = Boolean(newCategory.trim());
 
-  const handleCostChange = (value) => {
-    setCostPrice(value);
-    if (value !== "" && margin !== "") {
-      setPrice(String(computedPrice(numberValue(value), numberValue(margin))));
-    } else {
-      setPrice("");
-    }
-  };
-
-  const handleMarginChange = (value) => {
-    setMargin(value);
-    if (costPrice !== "" && value !== "") {
-      setPrice(String(computedPrice(numberValue(costPrice), numberValue(value))));
-    } else {
-      setPrice("");
-    }
-  };
+  const pricingComplete = price !== "" && costPrice !== "";
+  const grossProfit = pricingComplete ? Math.round((numberValue(price) - numberValue(costPrice)) * 100) / 100 : null;
+  const grossMargin = grossProfit !== null && numberValue(price) ? Math.round((grossProfit / numberValue(price)) * 10000) / 100 : null;
 
   const addImages = async (files) => {
     const selected = [...files].filter((file) => imageTypes.includes(file.type));
@@ -85,10 +68,10 @@ export default function AddProduct() {
         name: form.name,
         category,
         base_price: numberValue(price || form.price),
-        base_currency: form.base_currency || "USD",
+        base_currency: baseCurrency,
         stock: Number(form.stock),
-        margin: numberValue(margin || form.margin),
         cost_price: numberValue(costPrice || form.cost_price),
+        ships_to_countries: shipsToCountries.split(/[,;\n]/).map((country) => country.trim()).filter(Boolean),
         product_source: "internal",
         auto_sync: false,
         // status field removed from AddProduct form
@@ -158,20 +141,22 @@ export default function AddProduct() {
           <h3>{t("pricing")}</h3>
           <div className="form-grid four">
             <label className="field-group">
-              <RequiredLabel>{t("cost")}</RequiredLabel>
-              <input className="input" name="cost_price" type="number" min="0" step="0.01" value={costPrice} onChange={(event) => handleCostChange(event.target.value)} placeholder={t("costPricePlaceholder")} required />
-            </label>
-            <label className="field-group">
-              <RequiredLabel>{t("margin")}</RequiredLabel>
-              <input className="input" name="margin" type="number" min="0" step="0.01" value={margin} onChange={(event) => handleMarginChange(event.target.value)} placeholder={t("marginPlaceholder")} required />
-            </label>
-            <label className="field-group">
               <RequiredLabel>Base selling price</RequiredLabel>
-              <input className="input" name="price" type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder={t("sellingPrice")} required />
+              <input className="input" name="price" type="number" min="0.01" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder={t("sellingPrice")} required />
+            </label>
+            <label className="field-group">
+              <RequiredLabel>{t("cost")}</RequiredLabel>
+              <input className="input" name="cost_price" type="number" min="0" step="0.01" value={costPrice} onChange={(event) => setCostPrice(event.target.value)} placeholder={t("costPricePlaceholder")} required />
+            </label>
+            <label className="field-group">
+              <span>{t("grossProfit")}</span>
+              <div className={`input muted-input gross-profit-preview ${grossProfit !== null && grossProfit < 0 ? "is-loss" : ""}`}>
+                {grossProfit === null ? "—" : `${grossProfit.toFixed(2)} ${baseCurrency} (${grossMargin}%)`}
+              </div>
             </label>
             <label className="field-group">
               <RequiredLabel>Base currency</RequiredLabel>
-              <select className="select" name="base_currency" defaultValue="USD">
+              <select className="select" name="base_currency" value={baseCurrency} onChange={(event) => setBaseCurrency(event.target.value)}>
                 {(currencies.length ? currencies : [{ code: "USD", name: "US Dollar", symbol: "$" }]).map((item) => <option key={item.code} value={item.code}>{currencyOptionLabel(item)}</option>)}
               </select>
             </label>
@@ -219,6 +204,10 @@ export default function AddProduct() {
             <label className="field-group"><span>{t("widthCm")}</span><input className="input" name="width_cm" type="number" min="0" step="0.01" placeholder={t("widthCm")} /></label>
             <label className="field-group"><span>{t("heightCm")}</span><input className="input" name="height_cm" type="number" min="0" step="0.01" placeholder={t("heightCm")} /></label>
           </div>
+          <label className="field-group" style={{ marginTop: 14 }}>
+            <span>{t("shipsToCountries")}</span>
+            <input className="input" value={shipsToCountries} onChange={(event) => setShipsToCountries(event.target.value)} placeholder="TN, FR, DE — leave empty for worldwide" />
+          </label>
         </div>
 
         <div className="form-section">

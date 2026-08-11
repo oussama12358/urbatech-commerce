@@ -25,16 +25,23 @@ export default function Reports() {
       });
   }, [user?.token]);
 
+  const formatCurrencyTotals = (totals = {}) => {
+    const rows = Object.entries(totals || {});
+    // USD is the platform's chosen settlement/reporting currency.
+    return rows.length ? rows.map(([currency, amount]) => money(amount, currency)).join(" · ") : money(0, "USD");
+  };
+
   const stats = report ? [
-    [t("revenue"), money(report.revenue)],
-    [t("pendingRevenue"), money(report.pending_revenue)],
+    [t("revenue"), formatCurrencyTotals(report.revenue_by_currency)],
+    [t("grossProfit"), formatCurrencyTotals(report.gross_profit_by_currency)],
+    [t("pendingRevenue"), formatCurrencyTotals(report.pending_revenue_by_currency)],
     [t("orders"), report.total_orders],
     [t("paidOrders"), report.paid_orders],
     [t("supplierDispatched"), report.supplier_dispatched_orders],
-    [t("payoutPending"), money(report.supplier_payout_pending || 0)],
-    [t("payoutPaid"), money(report.supplier_payout_paid || 0)],
-    [t("payoutHeld"), money(report.supplier_payout_held || 0)],
-    [t("payoutCancelled"), money(report.supplier_payout_cancelled || 0)],
+    [t("payoutPending"), formatCurrencyTotals(report.supplier_payout_pending)],
+    [t("payoutPaid"), formatCurrencyTotals(report.supplier_payout_paid)],
+    [t("payoutHeld"), formatCurrencyTotals(report.supplier_payout_held)],
+    [t("payoutCancelled"), formatCurrencyTotals(report.supplier_payout_cancelled)],
     [t("fulfillmentRate"), `${report.fulfillment_rate}%`],
     [t("activeProducts"), report.active_products],
     [t("connectedSuppliers"), report.connected_suppliers]

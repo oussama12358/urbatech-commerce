@@ -197,8 +197,8 @@ export default function ProductPage() {
           <div className="kv">
             <div className="kv-row"><span>{t("price")}</span><strong>{money(product.price, product.currency)}</strong></div>
             <div className="kv-row"><span>{t("availability")}</span><strong>{availability} - {product.stock} {t("units")}</strong></div>
-            <div className="kv-row"><span>{t("leadTime")}</span><strong>{product.lead}</strong></div>
-            <div className="kv-row"><span>{t("warranty")}</span><strong>{product.warranty}</strong></div>
+            <div className="kv-row"><span>{t("leadTime")}</span><strong>{product.lead || "—"}</strong></div>
+            <div className="kv-row"><span>{t("warranty")}</span><strong>{product.warranty || "—"}</strong></div>
             <div className="kv-row">
               <span>{t("shippingCountries")}</span>
               <strong>{product.ships_worldwide || !shipsToLabel ? t("shipsWorldwide") : shipsToLabel}</strong>

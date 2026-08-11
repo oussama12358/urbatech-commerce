@@ -112,7 +112,8 @@ categoriesRouter.put("/:id", requireAuth, requireRole("admin"), async (req, res,
       { $set: { name: payload.name, slug } },
       { returnDocument: "after" }
     );
-    if (!result.value) {
+    // MongoDB driver v7 returns the document directly (not { value: document }).
+    if (!result) {
       res.status(404).json({ error: "Category not found" });
       return;
     }

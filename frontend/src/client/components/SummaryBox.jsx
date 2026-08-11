@@ -11,10 +11,6 @@ export default function SummaryBox({ totals }) {
         <strong>{money(totals.subtotal)}</strong>
       </div>
       <div className="summary-row">
-        <span>{t("serviceFee")}</span>
-        <strong>{money(totals.service)}</strong>
-      </div>
-      <div className="summary-row">
         <span>{t("estimatedShipping")}</span>
         <strong>{money(totals.shipping)}</strong>
       </div>

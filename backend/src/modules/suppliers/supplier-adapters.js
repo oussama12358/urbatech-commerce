@@ -223,11 +223,10 @@ export class SupplierAdapter {
       [this.orderMapping.quantity_key]: item.quantity,
       local_product_id: item.local_product_id,
       name: item.name,
-      unit_price: item.unit_price,
-      cost_price: item.cost_price,
-      supplier_total: item.supplier_total,
-      commission: item.commission,
-      commission_rate: item.commission_rate
+      // Supplier integrations receive only fulfillment data and the amount
+      // payable to that supplier. Customer prices, costs, and margins stay
+      // internal to URBA TECH.
+      supplier_total: item.supplier_total
     }));
 
     const payload = {

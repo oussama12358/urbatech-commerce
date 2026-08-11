@@ -45,6 +45,12 @@ export default function ProductTable({ products, onDelete }) {
     return new Date(timestamp).toLocaleDateString(undefined, { day: "numeric", month: "short" });
   };
 
+  const marginFor = (product) => {
+    const sellingPrice = Number(product.base_price ?? product.price ?? 0);
+    if (!sellingPrice) return 0;
+    return Math.round(((sellingPrice - Number(product.cost_price || 0)) / sellingPrice) * 10000) / 100;
+  };
+
   if (!products.length) {
     return <div className="empty">{t("noProductsYet")}</div>;
   }
@@ -68,7 +74,11 @@ export default function ProductTable({ products, onDelete }) {
         </tr>
       </thead>
       <tbody>
-        {products.map((product) => (
+        {products.map((product) => {
+          const baseCurrency = product.base_currency || product.currency || "USD";
+          const basePrice = Number(product.base_price ?? product.price ?? 0);
+          const margin = marginFor(product);
+          return (
           <tr key={product.id}>
             <td>{product.name}</td>
             <td>{product.sku || "-"}</td>
@@ -84,13 +94,13 @@ export default function ProductTable({ products, onDelete }) {
             <td>{formatLastSync(product.supplier_last_sync_at)}</td>
             <td>{product.supplier_product_id || "-"}</td>
             <td>{product.category}</td>
-            <td>{money(product.price)}</td>
-            <td>{money(product.cost_price || 0)}</td>
+            <td>{money(basePrice, baseCurrency)}</td>
+            <td>{money(product.cost_price || 0, baseCurrency)}</td>
             <td>{product.stock}</td>
-            <td>{product.margin}%</td>
+            <td className={margin < 0 ? "margin-loss" : ""}>{margin}%</td>
             <td>
               <div className="row-actions">
-                <Link className="icon-btn" to={`/admin/products/${product.id}/edit`} aria-label={`Edit ${product.name}`}>
+                <Link className="icon-btn" to={`/admin/products/${product.id}/edit`} state={{ product }} aria-label={`Edit ${product.name}`}>
                   <Pencil />
                 </Link>
                 {onDelete && (
@@ -107,7 +117,8 @@ export default function ProductTable({ products, onDelete }) {
               </div>
             </td>
           </tr>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   );

@@ -686,6 +686,18 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
 .category { color: #ffb400; font-size: 12px; font-weight: 600; text-transform: uppercase; }
 .price { font-size: 16px; font-weight: 700; white-space: nowrap; }
 .store-currency-select { margin: 0 0 20px; }
+.currency-combobox { position: relative; }
+.currency-combobox-trigger { display: flex; align-items: center; justify-content: space-between; cursor: pointer; text-align: left; }
+.currency-combobox-trigger span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.currency-combobox-menu { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; padding: 8px; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: #101a2b; box-shadow: 0 16px 30px rgba(0,0,0,.35); }
+.currency-search { min-height: 38px; }
+.currency-combobox-options { max-height: 230px; overflow-y: auto; margin-top: 6px; }
+.currency-combobox-option { display: block; width: 100%; padding: 9px 8px; border: 0; border-radius: 6px; background: transparent; color: #fff; cursor: pointer; text-align: left; font: inherit; }
+.currency-combobox-option:hover, .currency-combobox-option:focus { background: #24334a; outline: 0; }
+.currency-combobox-empty { margin: 10px 8px; color: #9db5d0; font-size: 13px; }
+.gross-profit-preview { display: flex; align-items: center; font-weight: 700; }
+.gross-profit-preview.is-loss { color: #fca5a5; border-color: rgba(248,113,113,.45); background: rgba(127,29,29,.2); }
+.margin-loss { color: #fca5a5; font-weight: 700; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .product-card h3 { margin: 0; min-height: 48px; font-size: 18px; line-height: 1.25; font-weight: 600; }
 .product-card:hover h3,

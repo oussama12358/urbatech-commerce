@@ -10,7 +10,12 @@ export default function Dashboard() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [status, setStatus] = useState("All");
-  const revenue = orders.reduce((sum, order) => sum + order.total, 0);
+  // Never add EUR, USD, TND, etc. as if they were the same unit.
+  const revenueByCurrency = orders.reduce((totals, order) => {
+    const currency = String(order.currency || "USD").toUpperCase();
+    totals[currency] = Number(totals[currency] || 0) + Number(order.total || 0);
+    return totals;
+  }, {});
   // Use a fixed stock filter to match admin Products page: All / In stock / Low / Out
   const statuses = ["All", "In stock", "Low", "Out"];
 
@@ -38,7 +43,7 @@ export default function Dashboard() {
 
   return (
     <main className="admin-main">
-      <DashboardCards productsCount={products.length} suppliersCount={suppliers.length} ordersCount={orders.length} revenue={revenue} />
+      <DashboardCards productsCount={products.length} suppliersCount={suppliers.length} ordersCount={orders.length} revenueByCurrency={revenueByCurrency} />
       <section className="panel" style={{ marginTop: 22 }}>
         <div className="admin-section-head">
           <h2>{t("recentProducts")}</h2>

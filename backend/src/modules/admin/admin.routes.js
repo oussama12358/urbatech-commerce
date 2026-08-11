@@ -16,6 +16,14 @@ import {
 export const adminRouter = Router();
 const onlineSupplierStatuses = ["Connected", "Active"];
 
+function totalsByCurrency(rows, amountForRow) {
+  return rows.reduce((totals, row) => {
+    const currency = String(row.currency || "USD").toUpperCase();
+    totals[currency] = Math.round(((totals[currency] || 0) + Number(amountForRow(row) || 0)) * 100) / 100;
+    return totals;
+  }, {});
+}
+
 adminRouter.use(requireAuth, requireRole("admin"));
 
 adminRouter.get("/dashboard", async (_req, res, next) => {
@@ -342,11 +350,16 @@ adminRouter.get("/reports", async (_req, res, next) => {
       const totalSuppliers = await suppliers.countDocuments();
       const paidOrders = orders.filter((order) => order.payment_status === "paid");
     const dispatchedOrders = orders.filter((order) => order.supplier_order_id || order.supplier_dispatches?.length);
-    const revenue = paidOrders.reduce((sum, order) => sum + order.total, 0);
+    const revenueByCurrency = totalsByCurrency(paidOrders, (order) => order.total);
+    const grossProfitByCurrency = totalsByCurrency(
+      paidOrders,
+      (order) => order.gross_profit ?? order.platform_commission ?? order.product_commission ?? 0
+    );
     const settlements = await summarizeSupplierSettlements();
-    const pendingRevenue = orders
-      .filter((order) => order.payment_status !== "paid")
-      .reduce((sum, order) => sum + order.total, 0);
+    const pendingRevenueByCurrency = totalsByCurrency(
+      orders.filter((order) => order.payment_status !== "paid"),
+      (order) => order.total
+    );
 
     res.json({
       data: {
@@ -356,8 +369,9 @@ adminRouter.get("/reports", async (_req, res, next) => {
         total_orders: orders.length,
         paid_orders: paidOrders.length,
         supplier_dispatched_orders: dispatchedOrders.length,
-        revenue,
-        pending_revenue: pendingRevenue,
+        revenue_by_currency: revenueByCurrency,
+        gross_profit_by_currency: grossProfitByCurrency,
+        pending_revenue_by_currency: pendingRevenueByCurrency,
         supplier_payout_pending: settlements.pending,
         supplier_payout_paid: settlements.paid,
         supplier_payout_held: settlements.held,

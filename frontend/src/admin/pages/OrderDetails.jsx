@@ -138,8 +138,7 @@ export default function OrderDetails() {
               <div className="kv-row"><span>{t("status")}</span><strong>{translateOrderStatus(order.status)}</strong></div>
               <div className="kv-row"><span>{t("payment")}</span><strong>{translatePaymentStatus(order.payment_status)}</strong></div>
               <div className="kv-row"><span>{t("supplierPayable")}</span><strong>{isUrbaTechStockOrder ? "URBA TECH stock" : money(order.supplier_payable || 0, order.currency || "USD")}</strong></div>
-              <div className="kv-row"><span>{t("productCommission")}</span><strong>{money(order.product_commission || 0, order.currency || "USD")}</strong></div>
-              <div className="kv-row"><span>{t("platformCommission")}</span><strong>{money(order.platform_commission || 0, order.currency || "USD")}</strong></div>
+              <div className="kv-row"><span>{t("grossProfit")}</span><strong>{money(order.gross_profit || 0, order.currency || "USD")}</strong></div>
               <div className="kv-row"><span>{t("dispatchError")}</span><strong>{order.supplier_dispatch_error || "-"}</strong></div>
             </div>
           </div>
@@ -185,7 +184,7 @@ export default function OrderDetails() {
                   <th>{t("qty")}</th>
                   <th>{t("unit")}</th>
                   <th>{t("cost")}</th>
-                  <th>{t("commission")}</th>
+                  <th>{t("grossProfit")}</th>
                   <th>{t("total")}</th>
                 </tr>
               </thead>
@@ -197,7 +196,7 @@ export default function OrderDetails() {
                     <td>{item.qty}</td>
                     <td>{money(item.unit_price, order.currency || "USD")}</td>
                     <td>{money(item.cost_price || 0, order.currency || "USD")}</td>
-                    <td>{money(item.commission || 0, order.currency || "USD")}</td>
+                    <td>{money(item.gross_profit || 0, order.currency || "USD")}</td>
                     <td>{money(item.total, order.currency || "USD")}</td>
                   </tr>
                 ))}
@@ -217,7 +216,6 @@ export default function OrderDetails() {
                     <th>{t("tracking")}</th>
                     <th>{t("invoice")}</th>
                     <th>{t("payable")}</th>
-                    <th>{t("commission")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -230,7 +228,6 @@ export default function OrderDetails() {
                       <td>{dispatch.tracking || "-"}</td>
                       <td>{dispatch.invoice_url ? <a className="link-button" href={dispatch.invoice_url} target="_blank" rel="noreferrer">{dispatch.invoice_number || t("open")}</a> : dispatch.invoice_number || "-"}</td>
                       <td>{money(dispatch.supplier_payable || 0, order.currency || "USD")}</td>
-                      <td>{money(dispatch.commission_total || 0, order.currency || "USD")}</td>
                     </tr>
                   ))}
                 </tbody>

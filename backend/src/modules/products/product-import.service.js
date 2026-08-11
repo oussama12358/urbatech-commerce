@@ -225,7 +225,7 @@ function mapRow(row) {
     base_currency: normalizeCurrency(get("currency") || "USD"),
     cost_price: costPrice,
     stock,
-    margin: Math.max(0, margin),
+    margin,
     status,
     supplier_status: normalizeSupplierStatus(status, stock),
     brand: String(get("brand") || "").trim(),
