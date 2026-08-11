@@ -14,7 +14,10 @@ export default function OrderDetails() {
   const [actionMessage, setActionMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [carrier, setCarrier] = useState("");
+  const [carrierCode, setCarrierCode] = useState("custom");
+  const [carrierOptions, setCarrierOptions] = useState([]);
   const [tracking, setTracking] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
   const [fulfillmentStatus, setFulfillmentStatus] = useState("Processing");
 
   useEffect(() => {
@@ -24,10 +27,15 @@ export default function OrderDetails() {
       .then((json) => {
         setOrder(json.data);
         setCarrier(json.data?.carrier || "");
+        setCarrierCode(json.data?.carrier_code || "custom");
         setTracking(json.data?.tracking || "");
+        setTrackingUrl(json.data?.tracking_url || "");
         setFulfillmentStatus(["Processing", "Shipped", "Delivered"].includes(json.data?.status) ? json.data.status : "Processing");
       })
       .catch((err) => setError(err.message || t("unableToLoadOrder")));
+    api("/admin/carriers")
+      .then((json) => setCarrierOptions(json.data || []))
+      .catch(() => setCarrierOptions([]));
   }, [id, user?.token]);
 
   const refreshOrder = async () => {
@@ -35,7 +43,9 @@ export default function OrderDetails() {
     const json = await api(`/admin/orders/${id}`);
     setOrder(json.data);
     setCarrier(json.data?.carrier || "");
+    setCarrierCode(json.data?.carrier_code || "custom");
     setTracking(json.data?.tracking || "");
+    setTrackingUrl(json.data?.tracking_url || "");
     setFulfillmentStatus(["Processing", "Shipped", "Delivered"].includes(json.data?.status) ? json.data.status : "Processing");
   };
 
@@ -49,7 +59,13 @@ export default function OrderDetails() {
       const api = createApiClient(user.token);
       await api(`/admin/orders/${id}/fulfillment`, {
         method: "PUT",
-        body: JSON.stringify({ carrier, tracking, status: fulfillmentStatus })
+        body: JSON.stringify({
+          carrier: carrierCode === "custom" ? carrier : "",
+          carrier_code: carrierCode === "custom" ? "" : carrierCode,
+          tracking,
+          tracking_url: trackingUrl,
+          status: fulfillmentStatus
+        })
       });
       setActionMessage("Fulfillment and tracking details saved.");
       await refreshOrder();
@@ -149,11 +165,19 @@ export default function OrderDetails() {
             </div>
             <label className="field-group">
               <span>{t("carrier")}</span>
-              <input className="input" value={carrier} onChange={(event) => setCarrier(event.target.value)} placeholder="DHL, Aramex, La Poste…" />
+              <select className="select" value={carrierCode} onChange={(event) => { setCarrierCode(event.target.value); setTrackingUrl(""); }}>
+                <option value="custom">Other / custom carrier</option>
+                {carrierOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
+              </select>
             </label>
+            {carrierCode === "custom" ? <label className="field-group"><span>Carrier name</span><input className="input" value={carrier} onChange={(event) => setCarrier(event.target.value)} placeholder="DHL, Aramex, La Poste…" /></label> : null}
             <label className="field-group">
               <span>{t("tracking")}</span>
               <input className="input" value={tracking} onChange={(event) => setTracking(event.target.value)} placeholder="Tracking number" />
+            </label>
+            <label className="field-group">
+              <span>Custom tracking URL (optional)</span>
+              <input className="input" type="url" value={trackingUrl} onChange={(event) => setTrackingUrl(event.target.value)} placeholder="https://…" />
             </label>
             <label className="field-group">
               <span>{t("status")}</span>

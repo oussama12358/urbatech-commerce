@@ -59,6 +59,7 @@ export default function OrderDetailsPage() {
               <div className="kv-row"><span>{t("tracking")}</span><strong>{order.tracking || t("notAvailableYet")}</strong></div>
               <div className="kv-row"><span>{t("total")}</span><strong>{money(order.total, order.currency || "USD")}</strong></div>
             </div>
+            {order.tracking_url ? <a className="primary-btn" href={order.tracking_url} target="_blank" rel="noreferrer" style={{ marginBottom: 12 }}>Track my package</a> : null}
             <Link className="secondary-btn" to="/orders">{t("backToOrders")}</Link>
           </div>
           <div className="panel">

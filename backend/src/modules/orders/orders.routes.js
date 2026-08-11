@@ -10,6 +10,7 @@ import {
   toCountryCode
 } from "../../utils/shipping-countries.js";
 import { getExchangeQuote, productBaseCurrency, sellingBasePrice, normalizeCurrency, roundCurrency } from "../currencies/currency.service.js";
+import { resolveTrackingUrl } from "../../utils/carriers.js";
 
 const orderSchema = z.object({
   billing: z.record(z.any()).default({}),
@@ -41,6 +42,12 @@ function serializeOrder(order, items = [], { includeInternal = false } = {}) {
     billing: order.billing,
     tracking: order.tracking || null,
     carrier: order.carrier || null,
+    tracking_url: resolveTrackingUrl({
+      carrierCode: order.carrier_code,
+      carrier: order.carrier,
+      tracking: order.tracking,
+      customUrl: order.tracking_url
+    }),
     stripe_session_id: order.stripe_session_id || null,
     paid_at: order.paid_at || null,
     created_at: order.created_at,

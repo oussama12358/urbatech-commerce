@@ -13,6 +13,7 @@ import {
   summarizeSupplierSettlements
 } from "../settlements/settlement.service.js";
 import { getExchangeQuote, roundCurrency } from "../currencies/currency.service.js";
+import { carrierName, carrierOptions, resolveTrackingUrl } from "../../utils/carriers.js";
 
 export const adminRouter = Router();
 const onlineSupplierStatuses = ["Connected", "Active"];
@@ -77,6 +78,10 @@ adminRouter.get("/orders/:id", async (req, res, next) => {
   }
 });
 
+adminRouter.get("/carriers", (_req, res) => {
+  res.json({ data: carrierOptions() });
+});
+
 adminRouter.post("/orders/:id/refund", async (req, res, next) => {
   try {
     res.json({ data: await refundOrder(req.params.id, req.body || {}) });
@@ -87,7 +92,9 @@ adminRouter.post("/orders/:id/refund", async (req, res, next) => {
 
 const fulfillmentUpdateSchema = z.object({
   carrier: z.string().trim().max(120).optional(),
+  carrier_code: z.string().trim().max(64).optional(),
   tracking: z.string().trim().max(180).optional(),
+  tracking_url: z.string().trim().url().max(1000).optional().or(z.literal("")),
   status: z.enum(["Processing", "Shipped", "Delivered"]).optional()
 });
 
@@ -102,7 +109,7 @@ const settlementPayoutSchema = z.object({
 adminRouter.put("/orders/:id/fulfillment", async (req, res, next) => {
   try {
     const payload = fulfillmentUpdateSchema.parse(req.body || {});
-    if (!payload.carrier && !payload.tracking && !payload.status) {
+    if (!payload.carrier && !payload.carrier_code && !payload.tracking && !payload.tracking_url && !payload.status) {
       res.status(400).json({ error: "Provide a carrier, tracking number, or fulfillment status." });
       return;
     }
@@ -113,14 +120,26 @@ adminRouter.put("/orders/:id/fulfillment", async (req, res, next) => {
       return;
     }
 
+    const selectedCarrier = carrierName(payload.carrier_code, payload.carrier || order.carrier || "");
+    const nextTracking = payload.tracking || order.tracking || "";
+    const nextTrackingUrl = resolveTrackingUrl({
+      carrierCode: payload.carrier_code || order.carrier_code,
+      carrier: selectedCarrier,
+      tracking: nextTracking,
+      // An explicitly empty field means "use the carrier's normal link",
+      // not "keep a link from the previously selected carrier".
+      customUrl: payload.tracking_url || null
+    });
     const previousStatus = order.status;
     const trackingChanged = Boolean(payload.tracking && payload.tracking !== order.tracking);
     const dispatches = Array.isArray(order.supplier_dispatches) ? [...order.supplier_dispatches] : [];
     const manualIndex = dispatches.findIndex((dispatch) => dispatch.dispatch_mode === "manual" || !dispatch.supplier_id);
     const manualDispatch = {
       ...(manualIndex >= 0 ? dispatches[manualIndex] : { supplier_id: null, supplier_order_id: `URBATECH-${order.id}`, dispatch_mode: "manual" }),
-      ...(payload.carrier ? { carrier: payload.carrier } : {}),
+      ...(selectedCarrier ? { carrier: selectedCarrier } : {}),
+      ...(payload.carrier_code ? { carrier_code: payload.carrier_code } : {}),
       ...(payload.tracking ? { tracking: payload.tracking } : {}),
+      ...(nextTrackingUrl ? { tracking_url: nextTrackingUrl } : {}),
       ...(payload.status ? { status: payload.status } : {}),
       fulfilled_manually_at: new Date()
     };
@@ -130,8 +149,10 @@ adminRouter.put("/orders/:id/fulfillment", async (req, res, next) => {
     await orders.updateOne(
       { id: order.id },
       { $set: {
-        ...(payload.carrier ? { carrier: payload.carrier } : {}),
+        ...(selectedCarrier ? { carrier: selectedCarrier } : {}),
+        ...(payload.carrier_code ? { carrier_code: payload.carrier_code } : {}),
         ...(payload.tracking ? { tracking: payload.tracking } : {}),
+        ...(nextTrackingUrl ? { tracking_url: nextTrackingUrl } : {}),
         ...(payload.status ? { status: payload.status } : {}),
         supplier_dispatches: dispatches,
         fulfillment_updated_at: new Date()
@@ -357,9 +378,7 @@ adminRouter.post("/customers/:id/reactivate", async (req, res, next) => {
 adminRouter.get("/reports", async (_req, res, next) => {
   try {
     const orders = await getAllOrders();
-    const products = await getCollection("products");
     const suppliers = await getCollection("suppliers");
-    const activeProducts = await products.countDocuments({ active: true });
     const connectedSuppliers = await suppliers.countDocuments({ status: { $in: onlineSupplierStatuses } });
       const totalSuppliers = await suppliers.countDocuments();
       const paidOrders = orders.filter((order) => order.payment_status === "paid");
@@ -377,7 +396,6 @@ adminRouter.get("/reports", async (_req, res, next) => {
 
     res.json({
       data: {
-        active_products: activeProducts,
         connected_suppliers: connectedSuppliers,
           total_suppliers: totalSuppliers,
         total_orders: orders.length,

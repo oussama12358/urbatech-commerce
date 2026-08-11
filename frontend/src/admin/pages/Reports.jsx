@@ -32,8 +32,8 @@ export default function Reports() {
   };
 
   const stats = report ? [
-    [t("revenue"), formatCurrencyTotals(report.revenue_by_currency)],
     [t("grossProfit"), formatCurrencyTotals(report.gross_profit_by_currency)],
+    [t("revenue"), formatCurrencyTotals(report.revenue_by_currency)],
     [t("pendingRevenue"), formatCurrencyTotals(report.pending_revenue_by_currency)],
     [t("orders"), report.total_orders],
     [t("paidOrders"), report.paid_orders],
@@ -43,7 +43,6 @@ export default function Reports() {
     [t("payoutHeld"), formatCurrencyTotals(report.supplier_payout_held)],
     [t("payoutCancelled"), formatCurrencyTotals(report.supplier_payout_cancelled)],
     [t("fulfillmentRate"), `${report.fulfillment_rate}%`],
-    [t("activeProducts"), report.active_products],
     [t("connectedSuppliers"), report.connected_suppliers]
   ] : [];
 
