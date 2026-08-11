@@ -345,6 +345,13 @@ export default function CheckoutPage() {
       (!configured.length || configured.includes(currency));
   });
 
+  const handleCountryChange = useCallback((nextCountry) => {
+    setSelectedCountry(nextCountry);
+    if (nextCountry?.code) {
+      setAutomaticCurrencyForCountry(nextCountry.code, { force: true });
+    }
+  }, [setAutomaticCurrencyForCountry]);
+
   useEffect(() => {
     if (!cartLines.length && !redirectedRef.current) {
       redirectedRef.current = true;
@@ -430,10 +437,10 @@ export default function CheckoutPage() {
       const matching = COUNTRIES.filter((c) => DIAL_CODES[c.code] === phoneCode);
       // If exactly one match, auto-update country (like Stripe/Shopify do)
       if (matching.length === 1 && selectedCountry?.code !== matching[0].code) {
-        setSelectedCountry(matching[0]);
+        handleCountryChange(matching[0]);
       }
     }
-  }, [phoneCode]);
+  }, [phoneCode, selectedCountry?.code, handleCountryChange]);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -542,10 +549,10 @@ export default function CheckoutPage() {
           <div className="form-grid two">
             <label>
               {t("country")} *
-              <CountryAutocomplete value={selectedCountry} onChange={setSelectedCountry} />            </label>
+              <CountryAutocomplete value={selectedCountry} onChange={handleCountryChange} />            </label>
             <label>
               {t("city")} *
-              <CitySearch countryCode={selectedCountry?.code} value={selectedCity} onChange={setSelectedCity} onCountryChange={setSelectedCountry} />
+              <CitySearch countryCode={selectedCountry?.code} value={selectedCity} onChange={setSelectedCity} onCountryChange={handleCountryChange} />
             </label>
           </div>
           <div className="form-grid two">
@@ -573,6 +580,11 @@ export default function CheckoutPage() {
           <div className="payment-panel">
             <div>
               <label htmlFor="paymentMethod">{t("paymentMethod")}</label>
+              <p className="payment-hint payment-currency-confirmation" role="status">
+                {t("chargedInCurrency")
+                  .replace("{amount}", money(totals.total, currency || "USD"))
+                  .replace("{currency}", currency || "USD")}
+              </p>
               {availablePaymentProviders.length ? (
                 <>
                   <select
@@ -589,11 +601,6 @@ export default function CheckoutPage() {
                     ))}
                   </select>
                   <p className="payment-hint">{t("redirectToPayment")}</p>
-                  <p className="payment-hint payment-currency-confirmation">
-                    {t("chargedInCurrency")
-                      .replace("{amount}", money(totals.total, currency || "USD"))
-                      .replace("{currency}", currency || "USD")}
-                  </p>
                   <div className="payment-logos">
                     {availablePaymentProviders.map((provider) => (
                       <span key={provider.provider_key} className="payment-badge">

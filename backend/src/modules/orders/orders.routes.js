@@ -247,13 +247,10 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
     const currency = normalizeCurrency(payload.currency || "USD");
     const trusted = await buildTrustedOrderItems(payload.items, billing, currency);
     const subtotal = trusted.subtotal;
-    // Product selling price already contains URBA TECH's profit. Do not add a
-    // second service fee at checkout.
-    const service = 0;
-    // Shipping is configured in USD and converted dynamically at order creation.
-    const shippingQuote = subtotal ? await getExchangeQuote(120, "USD", currency) : null;
-    const shipping = shippingQuote?.amount || 0;
-    const total = roundCurrency(subtotal + shipping, currency);
+    // The selling price is final: checkout adds neither a service fee nor a
+    // separate shipping charge.
+    const shipping = 0;
+    const total = roundCurrency(subtotal, currency);
 
     const customerId = req.user.id;
     const id = "UT-" + Date.now().toString().slice(-6);
@@ -281,8 +278,7 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
         currency,
         exchange_rate_snapshot: {
           rate_provider_base: "USD",
-          shipping_usd_to_order_rate: shippingQuote?.rate || 1,
-          fetched_at: shippingQuote?.fetched_at || new Date()
+          fetched_at: new Date()
         },
         supplier_payable: trusted.supplierPayable,
         gross_profit: trusted.grossProfit,

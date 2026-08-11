@@ -8,6 +8,12 @@ export const ZERO_DECIMAL_CURRENCIES = new Set(["BIF", "CLP", "DJF", "GNF", "JPY
 // Stripe supports more than 135 presentment currencies for card payments. The
 // final availability still depends on the Stripe account country/payment method.
 export const STRIPE_CURRENCIES = new Set("USD AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BIF BMD BND BOB BRL BSD BWP BYN BZD CAD CDF CHF CLP CNY COP CRC CVE CZK DJF DKK DOP DZD EGP ETB EUR FJD FKP GBP GEL GIP GMD GNF GTQ GYD HKD HNL HRK HTG HUF IDR ILS INR ISK JMD JPY KES KGS KHR KMF KRW KYD KZT LAK LBP LKR LRD LSL MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK MXN MYR MZN NAD NGN NIO NOK NPR NZD PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SEK SGD SHP SLE SLL SOS SRD STD SZL THB TJS TOP TRY TTD TWD TZS UAH UGX UYU UZS VES VND VUV WST XAF XCD XOF XPF YER ZAR ZMW TND".split(" "));
+// Display/conversion currencies include every local currency selected from the
+// storefront country list. A gateway is still offered only when it supports it.
+export const DISPLAY_CURRENCIES = new Set([
+  ...STRIPE_CURRENCIES,
+  ..."BGN BHD BTN CUP ERN GHS IQD IRR JOD KPW KWD LYD OMR SDG SSP STN SYP TMT".split(" ")
+]);
 
 const currencyNames = new Intl.DisplayNames(["en"], { type: "currency" });
 // Intl provides reliable symbols for most currencies. These overrides preserve
@@ -24,7 +30,7 @@ let fetchedAt = 0;
 
 export function normalizeCurrency(value, fallback = "USD") {
   const code = String(value || fallback).trim().toUpperCase();
-  return STRIPE_CURRENCIES.has(code) ? code : fallback;
+  return DISPLAY_CURRENCIES.has(code) ? code : fallback;
 }
 
 export function minorUnitMultiplier(currency) {
@@ -94,7 +100,7 @@ export function productBaseCurrency(product) {
 }
 
 export function currencyRegistry() {
-  return [...STRIPE_CURRENCIES].sort().map((code) => ({
+  return [...DISPLAY_CURRENCIES].sort().map((code) => ({
     code,
     name: currencyNames.of(code) || code,
     symbol: CURRENCY_SYMBOL_OVERRIDES[code] || new Intl.NumberFormat("en-US", { style: "currency", currency: code, currencyDisplay: "narrowSymbol" })

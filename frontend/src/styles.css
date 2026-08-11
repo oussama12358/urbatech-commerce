@@ -591,7 +591,7 @@ select.select option { background: #101a2b; color: #fff; }
 .country-dropdown::-webkit-scrollbar { width: 6px; }
 .country-dropdown::-webkit-scrollbar-track { background: transparent; }
 .country-dropdown::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 3px; }
-.layout { display: grid; grid-template-columns: 260px 1fr; gap: 22px; align-items: start; }
+.layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 22px; align-items: start; }
 .filters { position: sticky; top: 94px; padding: 16px; border: 1px solid rgba(255,255,255,.1); background: #202d40; border-radius: 8px; }
 .section-title {
   margin: 0 0 13px;
@@ -684,11 +684,14 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
 .product-body { display: grid; grid-template-rows: auto auto 1fr auto auto; gap: 12px; padding: 16px; }
 .product-top { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
 .category { color: #ffb400; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+.product-price-wrap { display: grid; justify-items: end; gap: 3px; }
 .price { font-size: 16px; font-weight: 700; white-space: nowrap; }
+.converted-price { color: #9db5d0; font-size: 12px; line-height: 1.2; white-space: nowrap; }
 .store-currency-select { margin: 0 0 20px; }
-.currency-combobox { position: relative; }
-.currency-combobox-trigger { display: flex; align-items: center; justify-content: space-between; cursor: pointer; text-align: left; }
-.currency-combobox-trigger span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.currency-combobox { position: relative; width: min(230px, 100%); }
+.currency-combobox-trigger { display: flex; align-items: center; justify-content: space-between; overflow: hidden; cursor: pointer; text-align: left; font-size: 12px; }
+.currency-combobox-trigger span:first-child { display: block; min-width: 0; width: calc(100% - 24px); flex: 1 1 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.currency-combobox-trigger span:last-child { flex: 0 0 auto; margin-left: 8px; }
 .currency-combobox-menu { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; padding: 8px; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: #101a2b; box-shadow: 0 16px 30px rgba(0,0,0,.35); }
 .currency-search { min-height: 38px; }
 .currency-combobox-options { max-height: 230px; overflow-y: auto; margin-top: 6px; }
@@ -734,7 +737,10 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
 .kv-row .badge svg { width: 14px; height: 14px; flex-shrink: 0; }
 .badge-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .table { width: 100%; border-collapse: collapse; border-radius: 8px; }
-.table-responsive { max-width: 100%; overflow: auto; border-radius: 8px; }
+.table-responsive { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; border-radius: 8px; }
+.product-table { table-layout: fixed; }
+.product-table th, .product-table td { overflow-wrap: anywhere; word-break: normal; }
+.product-table .row-actions { justify-content: center; }
 .table thead th { padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: middle; color: #ffb400; font-size: 13px; text-transform: uppercase; background: #263448; }
 .table tbody td { padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; vertical-align: middle; color: #c4cfdd; }
 .table tbody tr:hover { background: rgba(255,255,255,.02); }
@@ -965,13 +971,13 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
 .password-hint li { margin-bottom: 8px; }
 .password-hint li.valid { color: #7ee787; }
 .empty { padding: 36px; text-align: center; color: #a8b1c1; border: 1px dashed rgba(255,255,255,.16); border-radius: 8px; }
-.admin-shell { min-height: 100vh; display: grid; grid-template-columns: 280px minmax(0, 1fr); background: #0f172a; }
-.admin-sidebar { position: sticky; top: 0; height: 100vh; display: grid; grid-template-rows: auto 1fr; gap: 24px; padding: 22px; border-right: 1px solid rgba(255,255,255,.08); background: #09111f; }
+.admin-shell { width: 100%; min-height: 100vh; display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; overflow-x: hidden; background: #0f172a; }
+.admin-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 20; width: 220px; height: 100vh; display: grid; grid-template-rows: auto 1fr; gap: 24px; padding: 22px; border-right: 1px solid rgba(255,255,255,.08); background: #09111f; }
 .admin-brand { min-width: 0; }
 .admin-nav { display: grid; align-content: start; gap: 8px; }
 .admin-nav a { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 8px; color: #c4cfdd; text-decoration: none; font-weight: 600; }
 .admin-nav a.active, .admin-nav a:hover { color: #ffb400; background: #202d40; }
-.admin-workspace { min-width: 0; display: grid; grid-template-rows: auto 1fr; }
+.admin-workspace { grid-column: 2; min-width: 0; overflow-x: hidden; display: grid; grid-template-rows: auto 1fr; }
 .admin-topbar { position: sticky; top: 0; z-index: 10; display: flex; justify-content: space-between; gap: 14px; align-items: center; min-height: 72px; padding: 14px 24px; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(14,23,40,.96); backdrop-filter: blur(14px); box-shadow: inset 0 -1px 0 rgba(255,255,255,.04), 0 18px 48px rgba(0,0,0,.18); }
 .admin-topbar-left { flex: 1; display: flex; align-items: center; gap: 16px; min-width: 0; flex-wrap: wrap; }
 .admin-topbar-title { min-width: 0; }
@@ -1173,7 +1179,8 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
   .cart-line { grid-template-columns: 56px 1fr; }
   .cart-line > .qty, .cart-line > strong { margin-left: 70px; }
   .admin-shell { grid-template-columns: 1fr; }
-  .admin-sidebar { position: static; height: auto; padding: 16px; }
+  .admin-sidebar { position: static; width: auto; height: auto; padding: 16px; }
+  .admin-workspace { grid-column: auto; }
   .admin-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-topbar, .admin-page-head, .admin-section-head { align-items: stretch; flex-direction: column; }
   .admin-filter-bar { grid-template-columns: 1fr; }

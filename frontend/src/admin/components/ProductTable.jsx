@@ -56,7 +56,8 @@ export default function ProductTable({ products, onDelete }) {
   }
 
   return (
-    <table className="table">
+    <div className="table-responsive">
+    <table className="table product-table">
       <thead>
         <tr>
           <th>{t("product")}</th>
@@ -121,5 +122,6 @@ export default function ProductTable({ products, onDelete }) {
         })}
       </tbody>
     </table>
+    </div>
   );
 }

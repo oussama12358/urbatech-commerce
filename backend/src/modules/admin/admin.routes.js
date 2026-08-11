@@ -12,6 +12,7 @@ import {
   markSupplierSettlementPaid,
   summarizeSupplierSettlements
 } from "../settlements/settlement.service.js";
+import { getExchangeQuote, roundCurrency } from "../currencies/currency.service.js";
 
 export const adminRouter = Router();
 const onlineSupplierStatuses = ["Connected", "Active"];
@@ -22,6 +23,14 @@ function totalsByCurrency(rows, amountForRow) {
     totals[currency] = Math.round(((totals[currency] || 0) + Number(amountForRow(row) || 0)) * 100) / 100;
     return totals;
   }, {});
+}
+
+async function paidTotalInUsd(orders = []) {
+  const paidOrders = orders.filter((order) => String(order.payment_status || "").toLowerCase() === "paid");
+  const quotes = await Promise.all(paidOrders.map((order) =>
+    getExchangeQuote(order.total || 0, order.currency || "USD", "USD")
+  ));
+  return roundCurrency(quotes.reduce((sum, quote) => sum + Number(quote.amount || 0), 0), "USD");
 }
 
 adminRouter.use(requireAuth, requireRole("admin"));
@@ -222,7 +231,7 @@ adminRouter.get("/customers", async (req, res, next) => {
           let: { customerId: "$id" },
           pipeline: [
             { $match: { $expr: { $eq: ["$customer_id", "$$customerId"] } } },
-            { $project: { total: 1, created_at: 1 } }
+            { $project: { total: 1, currency: 1, payment_status: 1, created_at: 1 } }
           ],
           as: "orders"
         }
@@ -230,7 +239,6 @@ adminRouter.get("/customers", async (req, res, next) => {
       {
         $set: {
           orders_count: { $size: "$orders" },
-          total_spent: { $sum: "$orders.total" },
           last_order_at: { $max: "$orders.created_at" }
         }
       },
@@ -244,7 +252,7 @@ adminRouter.get("/customers", async (req, res, next) => {
           status: 1,
           created_at: 1,
           orders_count: 1,
-          total_spent: 1,
+          orders: 1,
           last_order_at: 1
         }
       }
@@ -253,7 +261,13 @@ adminRouter.get("/customers", async (req, res, next) => {
     pipeline.push({ $sort: { created_at: -1, email: 1 } });
 
     const rows = await customers.aggregate(pipeline).toArray();
-    res.json({ data: rows });
+    const data = await Promise.all(rows.map(async ({ orders: customerOrders = [], ...customer }) => ({
+      ...customer,
+      // The platform reporting/settlement currency is USD. Only completed
+      // payments count as a customer's actual spend.
+      total_spent_usd: await paidTotalInUsd(customerOrders)
+    })));
+    res.json({ data });
   } catch (err) {
     next(err);
   }
@@ -273,10 +287,10 @@ adminRouter.get("/customers/:id", async (req, res, next) => {
     const orderRows = await orders
       .find({ customer_id: customerId })
       .sort({ created_at: -1 })
-      .project({ _id: 0, id: 1, status: 1, payment_status: 1, total: 1, created_at: 1, billing: 1 })
+      .project({ _id: 0, id: 1, status: 1, payment_status: 1, total: 1, currency: 1, created_at: 1, billing: 1 })
       .toArray();
 
-    const totalSpent = orderRows.reduce((sum, order) => sum + Number(order.total || 0), 0);
+    const totalSpentUsd = await paidTotalInUsd(orderRows);
     const lastOrderAt = orderRows[0]?.created_at || null;
     const distinctAddresses = [...new Set(orderRows.map((order) => order.billing?.address).filter(Boolean))];
 
@@ -284,7 +298,7 @@ adminRouter.get("/customers/:id", async (req, res, next) => {
       data: {
         ...customer,
         orders_count: orderRows.length,
-        total_spent: totalSpent,
+        total_spent_usd: totalSpentUsd,
         last_order_at: lastOrderAt,
         orders: orderRows,
         addresses: distinctAddresses

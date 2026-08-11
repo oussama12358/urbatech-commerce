@@ -101,7 +101,7 @@ export default function CustomerDetails() {
               <div className="kv-row"><span>{t("address")}</span><strong>{savedAddress || "-"}</strong></div>
               <div className="kv-row"><span>{t("joined")}</span><strong>{formatDate(customer.created_at)}</strong></div>
               <div className="kv-row"><span>{t("orders")}</span><strong>{customer.orders_count || 0}</strong></div>
-              <div className="kv-row"><span>{t("totalSpent")}</span><strong>{money(customer.total_spent || 0)}</strong></div>
+              <div className="kv-row"><span>{t("totalSpent")}</span><strong>{money(customer.total_spent_usd || 0, "USD")}</strong></div>
               <div className="kv-row"><span>{t("lastOrder")}</span><strong>{formatDate(customer.last_order_at)}</strong></div>
             </div>
           </div>

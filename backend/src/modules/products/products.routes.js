@@ -135,6 +135,10 @@ async function serializeProduct(product, categoryName = null, includeInternal = 
     desc: product.description,
     price: await convertAmount(sellingBasePrice(product), productBaseCurrency(product), currency),
     currency: normalizeCurrency(currency),
+    // Display-only original selling price for the storefront conversion hint.
+    // Supplier cost information remains private.
+    original_price: sellingBasePrice(product),
+    original_currency: productBaseCurrency(product),
     stock: product.stock,
     status: product.status,
     warranty: product.warranty,

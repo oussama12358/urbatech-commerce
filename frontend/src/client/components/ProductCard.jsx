@@ -98,7 +98,14 @@ export default function ProductCard({ product }) {
       <div className="product-body">
         <div className="product-top">
           <span className="category">{product.category}</span>
-          <span className="price">{money(product.price, product.currency)}</span>
+          <div className="product-price-wrap">
+            <span className="price">{money(product.price, product.currency)}</span>
+            {product.original_currency && product.original_currency !== product.currency && (
+              <span className="converted-price" title={t("productOriginalCurrency")}>
+                {money(product.original_price, product.original_currency)} → {money(product.price, product.currency)}
+              </span>
+            )}
+          </div>
         </div>
         <h3>{product.name}</h3>
         <p className="desc">{product.desc}</p>

@@ -9,7 +9,7 @@ import { currencyOptionLabel } from "../../shared/lib/currency.js";
 
 export default function StorePage() {
   useLocale();
-  const { products, currency, currencies, setCurrency, resetToProductCurrencies } = useStore();
+  const { products, productsLoading, currency, currencies, setCurrency, resetToProductCurrencies } = useStore();
   const allLabel = t("all");
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
@@ -74,8 +74,8 @@ export default function StorePage() {
         title={t("storeLead")}
         lead={t("storeSubtitle")}
         stats={[
-          { value: String(products.length), label: t('products') },
-          { value: String(Math.max(0, categories.length - 1)), label: t('categories') }
+          { value: productsLoading ? "…" : String(products.length), label: t('products') },
+          { value: productsLoading ? "…" : String(Math.max(0, categories.length - 1)), label: t('categories') }
         ]}
       />
 

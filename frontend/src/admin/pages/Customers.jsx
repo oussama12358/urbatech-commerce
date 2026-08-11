@@ -218,7 +218,7 @@ export default function Customers() {
                       <span className={`customer-status-pill ${statusClass}`}>{statusText}</span>
                     </td>
                     <td>{customer.orders_count || 0}</td>
-                    <td>{money(customer.total_spent || 0)}</td>
+                    <td>{money(customer.total_spent_usd || 0, "USD")}</td>
                     <td>{formatDate(customer.last_order_at)}</td>
                     <td>{formatDate(customer.created_at)}</td>
                     <td className="action-cell">

@@ -21,7 +21,8 @@ const KEYS = {
   settings: "ut_react_settings",
   paymentProviders: "ut_react_payment_providers",
   currency: "ut_currency",
-  currencyPreference: "ut_currency_preference"
+  currencyPreference: "ut_currency_preference",
+  currencyCountry: "ut_currency_country"
 };
 
 const mergeCarts = (serverCart = {}, localCart = {}) => {
@@ -51,7 +52,6 @@ export function StoreProvider({ children }) {
     return storedUser?.country_code ? defaultCurrencyForCountry(storedUser.country_code) : null;
   });
   const [currencies, setCurrencies] = useState([]);
-  const [shippingEstimate, setShippingEstimate] = useState(120);
   const cartRef = useRef(cart);
   const lastLocalCartChangeRef = useRef(0);
 
@@ -98,11 +98,14 @@ export function StoreProvider({ children }) {
 
   useEffect(() => {
     let mounted = true;
+    let retryTimer = null;
+    let loadAttempt = 0;
     const load = async () => {
+      let retryScheduled = false;
       if (mounted) setProductsLoading(true);
       try {
         const api = createApiClient(user?.token);
-        const [productsJson, categoriesJson, settingsJson, paymentProvidersJson, currenciesJson] = await Promise.all([
+        const [productsResult, categoriesResult, settingsResult, paymentProvidersResult, currenciesResult] = await Promise.allSettled([
           api(currency ? `/products?currency=${encodeURIComponent(currency)}` : "/products"),
           api("/categories"),
           api("/settings"),
@@ -122,19 +125,33 @@ export function StoreProvider({ children }) {
           });
         }
 
-        if (productsJson?.data && mounted) {
-          setProducts(sanitizeProducts(productsJson.data));
+        // An FX/provider/settings request must never erase the storefront.
+        // If conversion is temporarily unavailable, show original product prices
+        // rather than an empty store until the visitor refreshes.
+        let productsJson = productsResult.status === "fulfilled" ? productsResult.value : null;
+        if (!productsJson && currency) {
+          try {
+            productsJson = await api("/products");
+          } catch (fallbackError) {
+            console.error("[StoreContext] Product fallback failed:", fallbackError?.message || fallbackError);
+          }
         }
-        if (categoriesJson?.data && mounted) {
-          setCategoriesState(categoriesJson.data);
+        const productsLoaded = Array.isArray(productsJson?.data);
+        const categoriesLoaded = Array.isArray(categoriesResult.status === "fulfilled" ? categoriesResult.value?.data : null);
+        if (productsLoaded && mounted) setProducts(sanitizeProducts(productsJson.data));
+        if (categoriesResult.status === "fulfilled" && categoriesResult.value?.data && mounted) setCategoriesState(categoriesResult.value.data);
+        if (settingsResult.status === "fulfilled" && settingsResult.value?.data && mounted) setSettingsState(settingsResult.value.data);
+        if (paymentProvidersResult.status === "fulfilled" && paymentProvidersResult.value?.data && mounted) setPaymentProviders(paymentProvidersResult.value.data);
+        if (currenciesResult.status === "fulfilled" && currenciesResult.value?.data && mounted) setCurrencies(currenciesResult.value.data);
+
+        // A development-server/backend restart can make the very first request
+        // empty or unavailable. Retry silently instead of requiring a browser
+        // refresh and never show a false "0 products" while retrying.
+        if ((!productsLoaded || !categoriesLoaded || (!productsJson.data.length && !categoriesResult.value?.data?.length)) && loadAttempt < 2 && mounted) {
+          loadAttempt += 1;
+          retryScheduled = true;
+          retryTimer = setTimeout(load, 700 * loadAttempt);
         }
-        if (settingsJson?.data && mounted) {
-          setSettingsState(settingsJson.data);
-        }
-        if (paymentProvidersJson?.data && mounted) {
-          setPaymentProviders(paymentProvidersJson.data);
-        }
-        if (currenciesJson?.data && mounted) setCurrencies(currenciesJson.data);
       } catch (err) {
         console.error('[StoreContext] Failed to load store data:', err?.message || err);
         localStorage.removeItem(KEYS.products);
@@ -142,47 +159,75 @@ export function StoreProvider({ children }) {
         localStorage.removeItem(KEYS.settings);
         localStorage.removeItem(KEYS.paymentProviders);
       } finally {
-        if (mounted) setProductsLoading(false);
+        if (mounted && !retryScheduled) setProductsLoading(false);
       }
     };
     load();
-    return () => (mounted = false);
+    return () => {
+      mounted = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [user?.token, currency]);
 
-  const setCurrency = (nextCurrency) => {
+  // A currency explicitly picked by the customer must win over country-based
+  // defaults for the rest of the checkout flow.
+  const setCurrency = useCallback((nextCurrency) => {
     const next = String(nextCurrency || "USD").toUpperCase();
+    // Record the destination alongside a manual choice.  It prevents a page
+    // refresh from mistaking the existing country for a newly selected one.
+    const currentCountry = String(user?.country_code || readShippingCountryCode() || "").toUpperCase();
+    // readStorage prefers sessionStorage. Remove any stale session values so
+    // they cannot override the customer's latest saved choice on refresh.
+    sessionStorage.removeItem(KEYS.currency);
+    sessionStorage.removeItem(KEYS.currencyPreference);
+    sessionStorage.removeItem(KEYS.currencyCountry);
     setCurrencyState(next);
     writeStorage(KEYS.currency, next);
+    if (currentCountry) writeStorage(KEYS.currencyCountry, currentCountry);
     setCurrencyPreference("manual");
     writeStorage(KEYS.currencyPreference, "manual");
-  };
+  }, [user?.country_code]);
 
-  const setAutomaticCurrencyForCountry = (countryCode) => {
-    if (currencyPreference === "manual" || !countryCode) return;
-    const next = defaultCurrencyForCountry(countryCode);
+  const setAutomaticCurrencyForCountry = useCallback((countryCode, { force = false } = {}) => {
+    const normalizedCountry = String(countryCode || "").trim().toUpperCase();
+    if (!normalizedCountry) return;
+
+    // A manual customer choice always wins on refresh. A real, new country
+    // selection can explicitly force the new country's default currency.
+    const savedPreference = readStorage(KEYS.currencyPreference, currencyPreference);
+    if (savedPreference === "manual" && !force) return;
+
+    const next = defaultCurrencyForCountry(normalizedCountry);
+    sessionStorage.removeItem(KEYS.currency);
+    sessionStorage.removeItem(KEYS.currencyPreference);
+    sessionStorage.removeItem(KEYS.currencyCountry);
     setCurrencyState(next);
     writeStorage(KEYS.currency, next);
+    writeStorage(KEYS.currencyCountry, normalizedCountry);
     setCurrencyPreference("auto");
     writeStorage(KEYS.currencyPreference, "auto");
-  };
+  }, [currencyPreference]);
 
-  const resetToProductCurrencies = () => {
+  const resetToProductCurrencies = useCallback(() => {
     setCurrencyState(null);
     localStorage.removeItem(KEYS.currency);
+    localStorage.removeItem(KEYS.currencyCountry);
+    sessionStorage.removeItem(KEYS.currency);
+    sessionStorage.removeItem(KEYS.currencyPreference);
+    sessionStorage.removeItem(KEYS.currencyCountry);
     setCurrencyPreference("auto");
     writeStorage(KEYS.currencyPreference, "auto");
-  };
+  }, []);
 
+  // A country changed from the customer profile (for example by an admin)
+  // must update its currency. On a normal refresh the saved country matches,
+  // so a manually chosen currency is preserved.
   useEffect(() => {
-    if (!currency) {
-      setShippingEstimate(120);
-      return;
-    }
-    const api = createApiClient(user?.token);
-    api(`/currencies/convert?amount=120&from=USD&to=${encodeURIComponent(currency)}`)
-      .then((json) => setShippingEstimate(Number(json?.data?.amount || 120)))
-      .catch(() => setShippingEstimate(120));
-  }, [currency, user?.token]);
+    const profileCountry = String(user?.country_code || "").trim().toUpperCase();
+    if (!profileCountry) return;
+    const savedCountry = String(readStorage(KEYS.currencyCountry, "") || "").trim().toUpperCase();
+    setAutomaticCurrencyForCountry(profileCountry, { force: savedCountry !== profileCountry });
+  }, [user?.country_code, setAutomaticCurrencyForCountry]);
 
   const syncCartFromServer = useCallback(
     async ({ mergeLocal = false } = {}) => {
@@ -571,11 +616,9 @@ export function StoreProvider({ children }) {
 
   const cartCount = cartLines.reduce((sum, line) => sum + line.qty, 0);
   const subtotal = cartLines.reduce((sum, line) => sum + line.price * line.qty, 0);
-  // Product prices already include URBA TECH's margin; checkout does not add
-  // a separate service fee.
-  const service = 0;
-  const shipping = subtotal ? shippingEstimate : 0;
-  const totals = { subtotal, service, shipping, total: subtotal + service + shipping };
+  // The displayed selling price is the checkout price. Shipping and service
+  // fees are not added separately.
+  const totals = { subtotal, shipping: 0, total: subtotal };
 
   const addOrder = (type, form) => {
     const order = {
