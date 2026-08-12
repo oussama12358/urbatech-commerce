@@ -39,15 +39,18 @@ export default function Settlements() {
     const method = settlement.payout_method || "manual";
     const automatic = method === "stripe_connect" || method === "paypal_payout";
     if (automatic && !window.confirm(`Send ${money(settlement.amount || 0, settlement.currency)} to this supplier using ${method === "stripe_connect" ? "Stripe Connect" : "PayPal Payouts"}?`)) return;
+    if (!automatic && !window.confirm(`Confirm that you have already sent ${money(settlement.amount || 0, settlement.currency)} to this supplier outside URBA TECH.`)) return;
     const reference = automatic ? "" : window.prompt(t("payoutReferencePrompt"), settlement.payout_reference || "");
     if (reference === null) return;
+    const fee = automatic ? "0" : window.prompt("Payout fee (optional, in settlement currency)", "0");
+    if (fee === null) return;
     setBusyId(settlement.id);
     setError("");
     try {
       const api = createApiClient(user.token);
       await api(`/admin/settlements/${settlement.id}/pay`, {
         method: "POST",
-        body: JSON.stringify({ payment_method: method, payout_reference: reference })
+        body: JSON.stringify({ payment_method: method, payout_reference: reference, payout_fee: Number(fee || 0), payout_fee_currency: settlement.currency })
       });
       await load();
     } catch (err) {

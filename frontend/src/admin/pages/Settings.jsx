@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../../store/StoreContext.jsx";
 import { t, useLocale } from "../../i18n.js";
 
@@ -22,11 +22,15 @@ function StatusBadge({ active, label }) {
 
 export default function Settings() {
   useLocale();
-  const { settings, updateSettings } = useStore();
+  const { settings, updateSettings, paymentProviders, refreshPaymentProviders, user } = useStore();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const payments = settings.payments || {};
+
+  useEffect(() => {
+    if (user?.token) refreshPaymentProviders().catch(() => {});
+  }, [user?.token]);
 
   const changeStorefront = async (storefrontEnabled) => {
     setSaving(true);
@@ -95,7 +99,17 @@ export default function Settings() {
               <StatusBadge active={payments.paypal?.enabled} label={t("enabled")} />
             </div>
           </div>
+          {paymentProviders.map((provider) => (
+            <div className="kv-row" key={provider.id}>
+              <span>{provider.name}</span>
+              <div className="badge-row">
+                <StatusBadge active={provider.merchant_eligible} label={t("merchantEligible")} />
+                <StatusBadge active={provider.enabled} label={t("enabled")} />
+              </div>
+            </div>
+          ))}
         </div>
+        <p className="muted" style={{ marginTop: 14 }}>{t("reportingCurrencyNote")}</p>
       </section>
     </main>
   );

@@ -392,8 +392,8 @@ button:not(:disabled):active,
 .supplier-details-grid strong { color: #cbd5e1; font-size: 13px; font-weight: 700; }
 .supplier-details-grid p { margin: 0; color: #fff; font-size: 14px; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
-.main { width: min(1440px, 100%); margin: 0 auto; padding: 34px 32px 56px; }
-.hero { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: start; padding: 24px 0 26px; }
+.main { width: min(1440px, 100%); margin: 0 auto; padding: 0 32px 56px; }
+.hero { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: start; padding: 10px 0 26px; }
 .hero > div:first-child { max-width: 920px; }
 .stats { justify-self: end; align-self: end; display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 10px; width: min(260px, 100%); }
 .eyebrow {
@@ -1173,7 +1173,7 @@ input[type="range"] { accent-color: #ffb400; width: 100%; }
   .topbar { grid-template-columns: 1fr auto; gap: 12px; padding: 12px 16px; }
   .nav { grid-column: 1 / -1; justify-content: start; overflow-x: auto; padding-bottom: 4px; }
   .actions { min-width: 0; }
-  .main { padding: 22px 16px 40px; }
+  .main { padding: 0 16px 40px; }
   .toolbar, .product-grid, .stats, .form-grid.two, .form-grid.three, .form-grid.four { grid-template-columns: 1fr; }
   .report-grid { grid-template-columns: 1fr; }
   .cart-line { grid-template-columns: 56px 1fr; }

@@ -38,9 +38,12 @@ export function StoreProvider({ children }) {
   const [authReady, setAuthReady] = useState(() => !readStorage(KEYS.user, null)?.token);
   const [cart, setCartState] = useState(() => readStorage(KEYS.cart, {}));
   const [orders, setOrdersState] = useState(() => readStorage(KEYS.orders, []));
-  const [products, setProductsState] = useState([]);
-  const [productsLoading, setProductsLoading] = useState(true);
-  const [categories, setCategoriesState] = useState([]);
+  // Keep the last successful catalogue locally. This lets the store render
+  // immediately after a frontend/backend restart, then refresh in the
+  // background once the API is ready.
+  const [products, setProductsState] = useState(() => readStorage(KEYS.products, []));
+  const [productsLoading, setProductsLoading] = useState(() => !readStorage(KEYS.products, []).length);
+  const [categories, setCategoriesState] = useState(() => readStorage(KEYS.categories, []));
   const [suppliers, setSuppliersState] = useState([]);
   const [settings, setSettingsState] = useState({ storefrontEnabled: true });
   const [paymentProviders, setPaymentProviders] = useState([]);
@@ -102,7 +105,9 @@ export function StoreProvider({ children }) {
     let loadAttempt = 0;
     const load = async () => {
       let retryScheduled = false;
-      if (mounted) setProductsLoading(true);
+      // Cached products are usable while the fresh request runs, so don't
+      // replace their counts with a temporary loading state.
+      if (mounted && !products.length) setProductsLoading(true);
       try {
         const api = createApiClient(user?.token);
         const [productsResult, categoriesResult, settingsResult, paymentProvidersResult, currenciesResult] = await Promise.allSettled([
@@ -139,7 +144,7 @@ export function StoreProvider({ children }) {
         const productsLoaded = Array.isArray(productsJson?.data);
         const categoriesLoaded = Array.isArray(categoriesResult.status === "fulfilled" ? categoriesResult.value?.data : null);
         if (productsLoaded && mounted) setProducts(sanitizeProducts(productsJson.data));
-        if (categoriesResult.status === "fulfilled" && categoriesResult.value?.data && mounted) setCategoriesState(categoriesResult.value.data);
+        if (categoriesResult.status === "fulfilled" && categoriesResult.value?.data && mounted) setCategories(categoriesResult.value.data);
         if (settingsResult.status === "fulfilled" && settingsResult.value?.data && mounted) setSettingsState(settingsResult.value.data);
         if (paymentProvidersResult.status === "fulfilled" && paymentProvidersResult.value?.data && mounted) setPaymentProviders(paymentProvidersResult.value.data);
         if (currenciesResult.status === "fulfilled" && currenciesResult.value?.data && mounted) setCurrencies(currenciesResult.value.data);
@@ -147,17 +152,15 @@ export function StoreProvider({ children }) {
         // A development-server/backend restart can make the very first request
         // empty or unavailable. Retry silently instead of requiring a browser
         // refresh and never show a false "0 products" while retrying.
-        if ((!productsLoaded || !categoriesLoaded || (!productsJson.data.length && !categoriesResult.value?.data?.length)) && loadAttempt < 2 && mounted) {
+        if ((!productsLoaded || !categoriesLoaded || (!productsJson.data.length && !categoriesResult.value?.data?.length)) && loadAttempt < 8 && mounted) {
           loadAttempt += 1;
           retryScheduled = true;
-          retryTimer = setTimeout(load, 700 * loadAttempt);
+          retryTimer = setTimeout(load, Math.min(1000 * loadAttempt, 4000));
         }
       } catch (err) {
         console.error('[StoreContext] Failed to load store data:', err?.message || err);
-        localStorage.removeItem(KEYS.products);
-        localStorage.removeItem(KEYS.categories);
-        localStorage.removeItem(KEYS.settings);
-        localStorage.removeItem(KEYS.paymentProviders);
+        // Preserve the last working catalogue while a restarted backend is
+        // coming online; deleting it is what previously caused a false 0/0.
       } finally {
         if (mounted && !retryScheduled) setProductsLoading(false);
       }
@@ -421,10 +424,12 @@ export function StoreProvider({ children }) {
         })
       : next;
     setProductsState(sanitized);
+    writeStorage(KEYS.products, sanitized);
   };
 
   const setCategories = (next) => {
     setCategoriesState(next);
+    writeStorage(KEYS.categories, next);
   };
 
   const setSuppliers = (next) => {

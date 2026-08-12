@@ -335,15 +335,10 @@ export default function CheckoutPage() {
   const [phoneFormat, setPhoneFormat] = useState("");
   const redirectedRef = useRef(false);
   const enabledPaymentProviders = paymentProviders.filter((provider) => provider.enabled);
-  const selectedCurrency = currencies.find((item) => item.code === currency);
-  const availablePaymentProviders = enabledPaymentProviders.filter((provider) => {
-    const configured = provider.supported_currencies || [];
-    const registrySupportsGateway = selectedCurrency
-      ? Boolean(selectedCurrency.gateways?.[provider.provider_key])
-      : currency === "USD";
-    return registrySupportsGateway &&
-      (!configured.length || configured.includes(currency));
-  });
+  // Do not hide an enabled provider based on a static currency list. The
+  // payment gateway is the source of truth and returns its own decline/error
+  // when an account, method, card or currency is not accepted.
+  const availablePaymentProviders = enabledPaymentProviders;
 
   const handleCountryChange = useCallback((nextCountry) => {
     setSelectedCountry(nextCountry);

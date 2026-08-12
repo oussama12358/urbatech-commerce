@@ -2,18 +2,18 @@ import { Router } from "express";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { requireAuth } from "../../middleware/auth.js";
-import { getCollection } from "../../db/mongo.js";
+import { createId, getCollection } from "../../db/mongo.js";
 import { dispatchSupplierOrder } from "../suppliers/supplier.service.js";
 import { getOrderById } from "../orders/orders.routes.js";
 import { notifyCustomerPaymentReceived } from "../notifications/notification.service.js";
 import {
-  getPaymentProviderByKey,
+  getPaymentProviderRecordByKey,
   getStripeClient,
   isPayPalProvider,
   isRedirectPaymentProvider,
   isStripeProvider
 } from "../payments/payment.service.js";
-import { minorUnitMultiplier, providerSupportsCurrency, roundCurrency } from "../currencies/currency.service.js";
+import { minorUnitMultiplier, roundCurrency } from "../currencies/currency.service.js";
 
 export const checkoutRouter = Router();
 
@@ -24,6 +24,38 @@ function getPayPalConfig(provider) {
     mode: provider?.config?.mode || env.paypalMode || "sandbox",
     webhookId: provider?.config?.webhookId || env.paypalWebhookId
   };
+}
+
+async function recordPaymentTransaction({ order, providerKey, status = "pending", providerPaymentId = null, methodCode = null, metadata = {} }) {
+  const transactions = await getCollection("payment_transactions");
+  const now = new Date();
+  await transactions.updateOne(
+    { order_id: order.id, provider_key: providerKey },
+    { $setOnInsert: { id: createId(), order_id: order.id, customer_id: order.customer_id, provider_key: providerKey, created_at: now },
+      $set: { status, amount: Number(order.total || 0), currency: String(order.currency || "USD").toUpperCase(), method_code: methodCode || providerKey, provider_payment_id: providerPaymentId, metadata, updated_at: now } },
+    { upsert: true }
+  );
+}
+
+async function markTransactionPaid({ order, providerKey, providerPaymentId, metadata = {} }) {
+  const transactions = await getCollection("payment_transactions");
+  await transactions.updateOne(
+    { order_id: order.id, provider_key: providerKey },
+    { $set: { status: "paid", provider_payment_id: providerPaymentId || null, paid_at: new Date(), metadata, updated_at: new Date() } },
+    { upsert: true }
+  );
+}
+
+async function completePaidOrder(order, providerKey, providerPaymentId, fields = {}) {
+  const orders = await getCollection("orders");
+  const current = await orders.findOne({ id: order.id });
+  if (!current || current.payment_status === "paid") return;
+  await orders.updateOne({ id: order.id }, { $set: { status: "Paid", payment_status: "paid", paid_at: new Date(), ...fields } });
+  await markTransactionPaid({ order, providerKey, providerPaymentId, metadata: fields });
+  notifyCustomerPaymentReceived(order.id).catch((err) => console.error("[notification:payment-received]", err.message));
+  await dispatchSupplierOrder(order.id).catch(async (err) => {
+    await orders.updateOne({ id: order.id }, { $set: { supplier_dispatch_error: err.message } });
+  });
 }
 
 function getPayPalBase(mode) {
@@ -67,17 +99,13 @@ checkoutRouter.post("/session", requireAuth, async (req, res, next) => {
       return;
     }
 
-    const provider = await getPaymentProviderByKey(payload.provider_key);
+    const provider = await getPaymentProviderRecordByKey(payload.provider_key);
     if (!provider || !provider.enabled || !isRedirectPaymentProvider(provider)) {
       res.status(400).json({ error: "Selected payment method is unavailable." });
       return;
     }
 
     const currency = String(order.currency || "USD").toUpperCase();
-    if (!providerSupportsCurrency(provider.provider_key, currency, provider.config || {})) {
-      res.status(400).json({ error: `${provider.name} cannot process ${currency}. Choose another currency or payment method.` });
-      return;
-    }
     const multiplier = minorUnitMultiplier(currency);
     const lineItems = order.items.map((item) => ({
       quantity: item.qty,
@@ -145,6 +173,7 @@ checkoutRouter.post("/session", requireAuth, async (req, res, next) => {
           }
         }
       );
+      await recordPaymentTransaction({ order, providerKey: provider.provider_key, providerPaymentId: session.id, metadata: { session_id: session.id } });
       res.json({ url: session.url });
       return;
     }
@@ -193,6 +222,7 @@ checkoutRouter.post("/session", requireAuth, async (req, res, next) => {
         }
 
         await orders.updateOne({ id: order.id }, { $set: { ...updateFields, paypal_order_id: createData.id } });
+        await recordPaymentTransaction({ order, providerKey: provider.provider_key, providerPaymentId: createData.id, metadata: { paypal_order_id: createData.id } });
         res.json({ url: approveLink });
         return;
       } catch (err) {
@@ -218,9 +248,12 @@ checkoutRouter.post("/webhook", async (req, res, next) => {
   const signature = req.get("stripe-signature");
 
   try {
-    if (env.stripeWebhookSecret) {
-      event = stripe.webhooks.constructEvent(req.rawBody, signature, env.stripeWebhookSecret);
+    // Accepting unsigned webhooks would allow anyone to mark an order paid.
+    if (!env.stripeWebhookSecret) {
+      res.status(503).json({ error: "Stripe webhook signing secret is not configured." });
+      return;
     }
+    event = stripe.webhooks.constructEvent(req.rawBody, signature, env.stripeWebhookSecret);
 
     if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
       const session = event.data.object;
@@ -233,23 +266,12 @@ checkoutRouter.post("/webhook", async (req, res, next) => {
         } else if (existing.payment_status === "paid") {
           // idempotent: already processed
         } else {
-          await orders.updateOne(
-            { id: orderId },
-            {
-              $set: {
-                status: "Paid",
-                payment_status: "paid",
-                stripe_session_id: session.id,
-                stripe_payment_intent: session.payment_intent || null,
-                paid_at: new Date()
-              }
-            }
-          );
-
-          notifyCustomerPaymentReceived(orderId).catch((err) => console.error("[notification:payment-received]", err.message));
-          await dispatchSupplierOrder(orderId).catch(async (err) => {
-            await orders.updateOne({ id: orderId }, { $set: { supplier_dispatch_error: err.message } });
-          });
+          const expectedMinor = Math.round(Number(existing.total || 0) * minorUnitMultiplier(existing.currency || "USD"));
+          if (session.currency?.toUpperCase() !== String(existing.currency || "USD").toUpperCase() || Number(session.amount_total) !== expectedMinor) {
+            await orders.updateOne({ id: orderId }, { $set: { payment_status: "verification_failed", status: "Payment verification failed" } });
+          } else {
+            await completePaidOrder(existing, "stripe", session.payment_intent || session.id, { stripe_session_id: session.id, stripe_payment_intent: session.payment_intent || null });
+          }
         }
       }
     }
@@ -274,7 +296,7 @@ checkoutRouter.get("/paypal/return", async (req, res, next) => {
       return;
     }
 
-    const provider = await getPaymentProviderByKey("paypal");
+    const provider = await getPaymentProviderRecordByKey("paypal");
     const paypalConfig = getPayPalConfig(provider);
     if (!paypalConfig.clientId || !paypalConfig.clientSecret) {
       res.redirect(`${env.clientOrigin}/checkout?payment=failed`);
@@ -299,25 +321,13 @@ checkoutRouter.get("/paypal/return", async (req, res, next) => {
       return;
     }
 
-    // mark order as paid and dispatch
-    const orders = await getCollection("orders");
-    await orders.updateOne(
-      { id: orderId },
-      {
-        $set: {
-          status: "Paid",
-          payment_status: "paid",
-          paypal_order_id: token,
-          paypal_capture_id: getPayPalCaptureId(capData),
-          paid_at: new Date()
-        }
-      }
-    );
-
-    notifyCustomerPaymentReceived(orderId).catch((err) => console.error("[notification:payment-received]", err.message));
-    await dispatchSupplierOrder(orderId).catch(async (err) => {
-      await orders.updateOne({ id: orderId }, { $set: { supplier_dispatch_error: err.message } });
-    });
+    const order = await getOrderById(orderId);
+    const captureAmount = capData?.purchase_units?.[0]?.payments?.captures?.[0]?.amount;
+    if (!order || captureAmount?.currency_code !== String(order.currency || "USD").toUpperCase() || Number(captureAmount?.value) !== Number(roundCurrency(order.total, order.currency))) {
+      res.redirect(`${env.clientOrigin}/checkout?payment=failed&order=${orderId}`);
+      return;
+    }
+    await completePaidOrder(order, "paypal", getPayPalCaptureId(capData), { paypal_order_id: token, paypal_capture_id: getPayPalCaptureId(capData) });
 
     res.redirect(`${env.clientOrigin}/orders/${orderId}?payment=success`);
   } catch (err) {
@@ -328,7 +338,7 @@ checkoutRouter.get("/paypal/return", async (req, res, next) => {
 // PayPal webhook endpoint: verify signature and handle events
 checkoutRouter.post("/paypal/webhook", async (req, res, next) => {
   try {
-    const provider = await getPaymentProviderByKey("paypal");
+    const provider = await getPaymentProviderRecordByKey("paypal");
     const paypalConfig = getPayPalConfig(provider);
     if (!paypalConfig.clientId || !paypalConfig.clientSecret || !paypalConfig.webhookId) {
       res.status(501).json({ error: "PayPal webhooks not configured on the server." });

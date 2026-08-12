@@ -6,7 +6,8 @@ import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { stripeEnabled } from "../payments/payment.service.js";
 
 const settingsSchema = z.object({
-  storefrontEnabled: z.boolean()
+  storefrontEnabled: z.boolean(),
+  reportingCurrency: z.string().length(3).optional()
 });
 
 export const settingsRouter = Router();
@@ -42,18 +43,21 @@ async function getPaymentsStatus() {
 async function getSettings() {
   const settings = await getCollection("app_settings");
   const row = await settings.findOne({ key: "storefront_enabled" });
+  const reportingRow = await settings.findOne({ key: "reporting_currency" });
   if (!row) {
     await ensureSettingsDocument();
     return {
       storefrontEnabled: true,
       disableEmailVerification: Boolean(env.disableEmailVerification),
-      payments: await getPaymentsStatus()
+      payments: await getPaymentsStatus(),
+      reportingCurrency: "USD"
     };
   }
   return {
     storefrontEnabled: row.value !== false,
     disableEmailVerification: Boolean(env.disableEmailVerification),
-    payments: await getPaymentsStatus()
+    payments: await getPaymentsStatus(),
+    reportingCurrency: String(reportingRow?.value || "USD").toUpperCase()
   };
 }
 
@@ -72,6 +76,11 @@ settingsRouter.put("/", requireAuth, requireRole("admin"), async (req, res, next
     await settings.updateOne(
       { key: "storefront_enabled" },
       { $set: { value: payload.storefrontEnabled, updated_at: new Date() } },
+      { upsert: true }
+    );
+    if (payload.reportingCurrency) await settings.updateOne(
+      { key: "reporting_currency" },
+      { $set: { value: payload.reportingCurrency.toUpperCase(), updated_at: new Date() } },
       { upsert: true }
     );
     res.json({ data: await getSettings() });

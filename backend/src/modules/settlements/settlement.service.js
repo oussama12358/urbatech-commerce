@@ -1,8 +1,8 @@
 import { env } from "../../config/env.js";
 import { createId, getCollection } from "../../db/mongo.js";
 import { notifySupplierSettlementPaid } from "../notifications/notification.service.js";
-import { getPaymentProviderByKey, getStripeClient } from "../payments/payment.service.js";
-import { minorUnitMultiplier, normalizeCurrency, providerSupportsCurrency } from "../currencies/currency.service.js";
+import { getPaymentProviderRecordByKey, getStripeClient } from "../payments/payment.service.js";
+import { getExchangeQuote, minorUnitMultiplier, normalizeCurrency, providerSupportsCurrency } from "../currencies/currency.service.js";
 
 function roundMoney(value, currency = "USD") {
   const multiplier = minorUnitMultiplier(currency);
@@ -38,16 +38,17 @@ async function executePayout(settlement, payload = {}) {
   if (!supplier) throw new Error("Supplier not found for payout.");
   const method = payload.payment_method || settlement.payout_method || supplier.payout_method || "manual";
   const currency = normalizeCurrency(settlement.currency);
-  if (method === "manual" || method === "bank_transfer" || method === "wise") {
+  if (["manual", "bank_transfer", "swift", "wise", "wise_transfer"].includes(method)) {
+    // The transfer happens outside the application. Admin confirms it only after it was actually sent.
     return {
-      status: payload.status || "paid",
+      status: "paid",
       reference: payload.payout_reference || payload.reference || "",
       method
     };
   }
 
   if (method === "stripe_connect") {
-    const provider = await getPaymentProviderByKey("stripe");
+    const provider = await getPaymentProviderRecordByKey("stripe");
     const stripe = getStripeClient(provider?.config || {});
     const destination = supplier.stripe_account_id || supplier.payout_stripe_account_id;
     if (!stripe || !destination) throw new Error("Stripe Connect is not configured for this supplier.");
@@ -70,7 +71,7 @@ async function executePayout(settlement, payload = {}) {
   }
 
   if (method === "paypal_payout") {
-    const provider = await getPaymentProviderByKey("paypal");
+    const provider = await getPaymentProviderRecordByKey("paypal");
     const config = {
       clientId: provider?.config?.clientId || env.paypalClientId,
       clientSecret: provider?.config?.clientSecret || env.paypalClientSecret,
@@ -111,6 +112,9 @@ async function executePayout(settlement, payload = {}) {
     return { status: "processing", reference: payout.batch_header?.payout_batch_id || "", method };
   }
 
+  if (["airwallex", "payoneer_payout"].includes(method)) {
+    throw new Error(`${method === "airwallex" ? "Airwallex" : "Payoneer"} payouts are disabled until its verified server integration is configured.`);
+  }
   throw new Error(`Unsupported payout method: ${method}`);
 }
 
@@ -124,10 +128,12 @@ export async function ensureSupplierSettlementsForOrder(orderId) {
   const dispatches = (order.supplier_dispatches || []).filter((dispatch) => dispatch.supplier_id);
   const results = [];
   for (const dispatch of dispatches) {
-    const currency = normalizeCurrency(order.currency);
-    const amount = roundMoney(dispatch.supplier_payable || 0, currency);
+    const supplier = await suppliers.findOne({ id: dispatch.supplier_id }, { projection: { payout_method: 1, payout_currency: 1 } });
+    const sourceCurrency = normalizeCurrency(order.currency);
+    const currency = normalizeCurrency(supplier?.payout_currency || "USD");
+    const payable = Number(dispatch.supplier_payable || 0);
+    const amount = sourceCurrency === currency ? roundMoney(payable, currency) : roundMoney((await getExchangeQuote(payable, sourceCurrency, currency)).amount, currency);
     if (amount <= 0) continue;
-    const supplier = await suppliers.findOne({ id: dispatch.supplier_id }, { projection: { payout_method: 1 } });
 
     const now = new Date();
     const doc = {
@@ -189,17 +195,26 @@ export async function listSupplierSettlements({ status = null, supplierId = null
 
 export async function markSupplierSettlementPaid(id, payload = {}) {
   const settlements = await getCollection("supplier_settlements");
+  const payoutTransactions = await getCollection("supplier_payout_transactions");
   const settlement = await settlements.findOneAndUpdate(
     { id, status: "pending" },
     { $set: { status: "processing", updated_at: new Date() } },
     { returnDocument: "before", projection: { _id: 0 } }
   );
   if (!settlement) return null;
+  const method = payload.payment_method || settlement.payout_method || "manual";
+  const idempotencyKey = `supplier-settlement:${settlement.id}`;
+  await payoutTransactions.updateOne(
+    { settlement_id: settlement.id, idempotency_key: idempotencyKey },
+    { $setOnInsert: { id: createId(), settlement_id: settlement.id, supplier_id: settlement.supplier_id, order_id: settlement.order_id, amount: settlement.amount, currency: settlement.currency, method, idempotency_key: idempotencyKey, status: "processing", created_at: new Date() }, $set: { updated_at: new Date() } },
+    { upsert: true }
+  );
   let payout;
   try {
     payout = await executePayout(settlement, payload);
   } catch (error) {
     await settlements.updateOne({ id, status: "processing" }, { $set: { status: "pending", updated_at: new Date() } });
+    await payoutTransactions.updateOne({ settlement_id: settlement.id, idempotency_key: idempotencyKey }, { $set: { status: "failed", error: error.message, updated_at: new Date() } });
     throw error;
   }
   const update = {
@@ -211,6 +226,10 @@ export async function markSupplierSettlementPaid(id, payload = {}) {
     updated_at: new Date()
   };
   await settlements.updateOne({ id }, { $set: update });
+  await payoutTransactions.updateOne(
+    { settlement_id: settlement.id, idempotency_key: idempotencyKey },
+    { $set: { status: payout.status, provider_reference: payout.reference || "", payout_fee: Number(payload.payout_fee || 0), payout_fee_currency: payload.payout_fee_currency || settlement.currency, paid_at: payout.status === "paid" ? new Date() : null, updated_at: new Date() } }
+  );
   const updated = await settlements.findOne({ id }, { projection: { _id: 0 } });
   if (updated && (updated.status === "paid" || updated.status === "processing")) {
     notifySupplierSettlementPaid(updated).catch((err) => console.error("[notification:settlement-paid]", err.message));

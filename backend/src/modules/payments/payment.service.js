@@ -3,6 +3,15 @@ import { getCollection, createId } from "../../db/mongo.js";
 import { env } from "../../config/env.js";
 
 const stripe = env.stripeSecretKey ? new Stripe(env.stripeSecretKey) : null;
+const SECRET_KEYS = new Set(["stripeSecretKey", "clientSecret", "apiKey", "apiSecret", "webhookSecret", "webhookId", "accessToken", "privateKey"]);
+
+export const PAYMENT_PROVIDER_CATALOG = [
+  { provider_key: "stripe", name: "Stripe", description: "Cards, Apple Pay and Google Pay where the connected Stripe account supports them.", integration: "stripe", methods: ["card", "apple_pay", "google_pay"] },
+  { provider_key: "paypal", name: "PayPal", description: "PayPal and eligible card payments through the connected PayPal business account.", integration: "paypal", methods: ["paypal", "card"] },
+  { provider_key: "konnect", name: "Konnect", description: "Tunisian online payment provider. Enable only after your merchant account and API integration are configured.", integration: "external", methods: ["card", "e_dinar"] },
+  { provider_key: "paymee", name: "Paymee", description: "Tunisian online payment provider. Enable only after your merchant account and API integration are configured.", integration: "external", methods: ["card", "e_dinar"] },
+  { provider_key: "flouci", name: "Flouci", description: "Tunisian checkout provider. Enable only after your merchant account and webhook integration are configured.", integration: "external", methods: ["flouci_wallet", "card"] }
+];
 
 function defaultEnabledForKey(key) {
   if (key === "stripe") return Boolean(env.stripeSecretKey);
@@ -10,184 +19,109 @@ function defaultEnabledForKey(key) {
   return false;
 }
 
-const DEFAULT_PAYMENT_PROVIDERS = [
-  {
-    id: createId(),
-    provider_key: "stripe",
-    name: "Stripe",
-    description: "Credit/debit card payments plus Apple Pay and Google Pay where supported.",
-    enabled: defaultEnabledForKey("stripe"),
-    config: {}
-  },
-  {
-    id: createId(),
-    provider_key: "paypal",
-    name: "PayPal",
-    description: "Pay with PayPal or supported card payments through PayPal.",
-    enabled: defaultEnabledForKey("paypal"),
-    config: {}
-  }
-];
-
-const DIRECT_PAYMENT_KEYS = new Set(DEFAULT_PAYMENT_PROVIDERS.map((provider) => provider.provider_key));
-
-export function isStripeProvider(providerKey) {
-  return providerKey === "stripe";
+function catalogEntry(key) {
+  return PAYMENT_PROVIDER_CATALOG.find((item) => item.provider_key === key);
 }
 
-export function isPayPalProvider(providerKey) {
-  return providerKey === "paypal";
+function defaultProvider(def) {
+  return {
+    id: createId(), provider_key: def.provider_key, name: def.name, description: def.description,
+    integration: def.integration, enabled: defaultEnabledForKey(def.provider_key), merchant_eligible: defaultEnabledForKey(def.provider_key),
+    config: { supportedCurrencies: [], supportedCountries: [], enabledMethods: def.methods }
+  };
 }
 
-export function isRedirectPaymentProvider(provider) {
-  if (!provider?.enabled) return false;
-  if (isStripeProvider(provider.provider_key)) {
-    return Boolean(provider.config?.stripeSecretKey || env.stripeSecretKey);
+function publicConfig(config = {}) {
+  return Object.fromEntries(Object.entries(config).filter(([key]) => !SECRET_KEYS.has(key)));
+}
+
+function normalizeConfig(config = {}) {
+  const next = { ...config };
+  for (const field of ["supportedCurrencies", "supported_currencies", "supportedCountries", "supported_countries", "enabledMethods"]) {
+    if (typeof next[field] === "string") next[field] = next[field].split(",").map((v) => v.trim()).filter(Boolean);
   }
-  if (isPayPalProvider(provider.provider_key)) {
-    return Boolean(
-      (provider.config?.clientId || env.paypalClientId) &&
-      (provider.config?.clientSecret || env.paypalClientSecret)
-    );
-  }
+  return next;
+}
+
+function serializeProvider(provider, { includeConfig = false } = {}) {
+  const configuredCurrencies = provider.config?.supportedCurrencies || provider.config?.supported_currencies || [];
+  const configuredCountries = provider.config?.supportedCountries || provider.config?.supported_countries || [];
+  const entry = catalogEntry(provider.provider_key);
+  return {
+    id: provider.id, provider_key: provider.provider_key, name: provider.name, description: provider.description || "",
+    integration: provider.integration || entry?.integration || "external", enabled: Boolean(provider.enabled), merchant_eligible: Boolean(provider.merchant_eligible),
+    supported_currencies: Array.isArray(configuredCurrencies) ? configuredCurrencies.map((value) => String(value).toUpperCase()) : [],
+    supported_countries: Array.isArray(configuredCountries) ? configuredCountries.map((value) => String(value).toUpperCase()) : [],
+    methods: entry?.methods || [], enabled_methods: provider.config?.enabledMethods || entry?.methods || [],
+    configured: isProviderConfigured(provider),
+    ...(includeConfig ? { config: publicConfig(provider.config || {}) } : {})
+  };
+}
+
+export function isStripeProvider(providerKey) { return providerKey === "stripe"; }
+export function isPayPalProvider(providerKey) { return providerKey === "paypal"; }
+
+export function isProviderConfigured(provider) {
+  if (!provider) return false;
+  if (isStripeProvider(provider.provider_key)) return Boolean(provider.config?.stripeSecretKey || env.stripeSecretKey);
+  if (isPayPalProvider(provider.provider_key)) return Boolean((provider.config?.clientId || env.paypalClientId) && (provider.config?.clientSecret || env.paypalClientSecret));
+  // External providers are never considered live merely because data was typed in the admin page.
   return false;
 }
 
-function serializeProvider(provider, includeConfig = false) {
-  const configuredCurrencies = provider.config?.supportedCurrencies || provider.config?.supported_currencies;
-  return {
-    id: provider.id,
-    provider_key: provider.provider_key,
-    name: provider.name,
-    description: provider.description || "",
-    enabled: Boolean(provider.enabled),
-    // Safe for storefront use; credentials remain server-only.
-    supported_currencies: Array.isArray(configuredCurrencies)
-      ? configuredCurrencies.map((currency) => String(currency).toUpperCase())
-      : [],
-    ...(includeConfig ? { config: provider.config || {} } : {})
-  };
+export function isRedirectPaymentProvider(provider) {
+  return Boolean(provider?.enabled && provider?.merchant_eligible && isProviderConfigured(provider));
 }
 
 export async function ensureDefaultPaymentProviders() {
   const providers = await getCollection("payment_providers");
-  const count = await providers.countDocuments();
-  if (count === 0) {
-    await providers.insertMany(DEFAULT_PAYMENT_PROVIDERS);
-    return DEFAULT_PAYMENT_PROVIDERS.map((provider) => serializeProvider(provider, true));
+  for (const def of PAYMENT_PROVIDER_CATALOG) {
+    const existing = await providers.findOne({ provider_key: def.provider_key });
+    if (!existing) await providers.insertOne(defaultProvider(def));
+    else await providers.updateOne({ provider_key: def.provider_key }, { $set: { integration: existing.integration || def.integration, "config.enabledMethods": existing.config?.enabledMethods || def.methods } });
   }
-
-  const existingKeys = new Set(
-    (await providers.find().project({ provider_key: 1 }).toArray()).map((item) => item.provider_key)
-  );
-  const missing = DEFAULT_PAYMENT_PROVIDERS.filter((provider) => !existingKeys.has(provider.provider_key));
-  if (missing.length > 0) {
-    await providers.insertMany(missing);
-  }
-
-  // Sync enabled status from .env credentials on every call
-  // If credentials exist -> auto-enable. If credentials removed -> disable.
-  for (const def of DEFAULT_PAYMENT_PROVIDERS) {
-    const shouldBeEnabled = defaultEnabledForKey(def.provider_key);
-    await providers.updateOne(
-      { provider_key: def.provider_key, enabled: { $ne: shouldBeEnabled } },
-      { $set: { enabled: shouldBeEnabled } }
-    );
-  }
-
-  return providers
-    .find()
-    .project({ _id: 0, id: 1, provider_key: 1, name: 1, description: 1, enabled: 1, config: 1 })
-    .toArray();
+  return providers.find().project({ _id: 0 }).toArray();
 }
 
 export async function getPaymentProviders({ admin = false } = {}) {
   await ensureDefaultPaymentProviders();
   const providers = await getCollection("payment_providers");
-  const query = admin ? {} : { enabled: true };
-  const docs = await providers.find(query).project({ _id: 0 }).sort({ name: 1 }).toArray();
-  return docs
-    .filter((provider) => DIRECT_PAYMENT_KEYS.has(provider.provider_key))
-    .filter((provider) => admin || isRedirectPaymentProvider(provider))
-    .map((provider) => serializeProvider(provider, admin));
+  const docs = await providers.find(admin ? {} : { enabled: true, merchant_eligible: true }).project({ _id: 0 }).sort({ name: 1 }).toArray();
+  return docs.filter((provider) => admin || isRedirectPaymentProvider(provider)).map((provider) => serializeProvider(provider, { includeConfig: admin }));
+}
+
+export async function getPaymentProviderRecordByKey(providerKey) {
+  await ensureDefaultPaymentProviders();
+  return (await getCollection("payment_providers")).findOne({ provider_key: providerKey }, { projection: { _id: 0 } });
 }
 
 export async function getPaymentProviderById(id) {
-  const providers = await getCollection("payment_providers");
-  const provider = await providers.findOne({ id });
-  return provider ? serializeProvider(provider, true) : null;
+  await ensureDefaultPaymentProviders();
+  const provider = await (await getCollection("payment_providers")).findOne({ id }, { projection: { _id: 0 } });
+  return provider ? serializeProvider(provider, { includeConfig: true }) : null;
 }
 
 export async function getPaymentProviderByKey(providerKey) {
-  const providers = await getCollection("payment_providers");
-  const provider = await providers.findOne({ provider_key: providerKey });
-  return provider ? serializeProvider(provider, true) : null;
-}
-
-export async function createPaymentProvider(payload) {
-  const providers = await getCollection("payment_providers");
-  const existing = await providers.findOne({ provider_key: payload.provider_key });
-  if (existing) {
-    throw new Error("A payment provider with this key already exists.");
-  }
-
-  const provider = {
-    id: createId(),
-    provider_key: payload.provider_key,
-    name: payload.name,
-    description: payload.description || "",
-    enabled: Boolean(payload.enabled),
-    config: payload.config || {}
-  };
-  await providers.insertOne(provider);
-  return serializeProvider(provider, true);
+  const provider = await getPaymentProviderRecordByKey(providerKey);
+  return provider ? serializeProvider(provider, { includeConfig: false }) : null;
 }
 
 export async function updatePaymentProvider(id, payload) {
   const providers = await getCollection("payment_providers");
-  const provider = await providers.findOne({ id });
-  if (!provider) {
-    return null;
-  }
+  const provider = await providers.findOne({ id }, { projection: { _id: 0 } });
+  if (!provider) return null;
   const next = {
-    ...provider,
-    name: payload.name ?? provider.name,
-    description: payload.description ?? provider.description,
-    enabled: payload.enabled ?? provider.enabled,
-    config: payload.config ?? provider.config
+    ...provider, name: payload.name ?? provider.name, description: payload.description ?? provider.description,
+    merchant_eligible: payload.merchant_eligible ?? provider.merchant_eligible,
+    config: payload.config ? normalizeConfig({ ...provider.config, ...payload.config }) : provider.config
   };
-
-  if (next.enabled && !isRedirectPaymentProvider(next)) {
-    throw new Error("Configure real gateway credentials before enabling this payment method.");
-  }
-
+  // A provider cannot be switched on until the server can make a real, authenticated checkout request.
+  next.enabled = payload.enabled ?? provider.enabled;
+  if (next.enabled && !isRedirectPaymentProvider(next)) throw new Error("This provider cannot be enabled yet: add verified merchant credentials and a live server integration first.");
   await providers.updateOne({ id }, { $set: next });
-  return serializeProvider(next, true);
+  return serializeProvider(next, { includeConfig: true });
 }
 
-export async function deletePaymentProvider(id) {
-  const providers = await getCollection("payment_providers");
-  await providers.deleteOne({ id });
-}
-
-export async function getStripeProvider() {
-  const provider = await getPaymentProviderByKey("stripe");
-  return provider;
-}
-
-export function stripeEnabled() {
-  return Boolean(stripe);
-}
-
-export function getStripeClient(config = {}) {
-  if (config.stripeSecretKey) {
-    return new Stripe(config.stripeSecretKey);
-  }
-  return stripe;
-}
-
-export async function getProviderByKey(payloadProviderKey) {
-  if (!payloadProviderKey) return null;
-  return getPaymentProviderByKey(payloadProviderKey);
-}
-
+export function getStripeClient(config = {}) { return config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : stripe; }
+export function stripeEnabled() { return Boolean(stripe); }
+export async function getProviderByKey(providerKey) { return providerKey ? getPaymentProviderByKey(providerKey) : null; }

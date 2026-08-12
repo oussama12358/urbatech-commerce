@@ -32,6 +32,15 @@ export const env = {
   paypalMode: process.env.PAYPAL_MODE || "sandbox",
   // PayPal webhook ID (from PayPal app webhook configuration) for signature verification
   paypalWebhookId: process.env.PAYPAL_WEBHOOK_ID || "",
+  // Tunisian payment providers. These remain inactive until their respective
+  // checkout and signed-webhook adapters are implemented and configured.
+  konnectApiKey: process.env.KONNECT_API_KEY || "",
+  konnectWebhookSecret: process.env.KONNECT_WEBHOOK_SECRET || "",
+  paymeeApiKey: process.env.PAYMEE_API_KEY || "",
+  paymeeWebhookSecret: process.env.PAYMEE_WEBHOOK_SECRET || "",
+  flouciApiKey: process.env.FLOUCI_API_KEY || "",
+  flouciAppToken: process.env.FLOUCI_APP_TOKEN || "",
+  flouciWebhookSecret: process.env.FLOUCI_WEBHOOK_SECRET || "",
   // Open Exchange Rates compatible endpoint returning rates relative to USD.
   exchangeRateApiUrl: process.env.EXCHANGE_RATE_API_URL || "https://open.er-api.com/v6/latest/USD",
   exchangeRateCacheMs: Number(process.env.EXCHANGE_RATE_CACHE_MS || 6 * 60 * 60 * 1000),

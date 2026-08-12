@@ -48,7 +48,7 @@ adminRouter.get("/dashboard", async (_req, res, next) => {
         products: productsCount,
         suppliers: suppliersCount,
         orders: orders.length,
-        revenue: orders.reduce((sum, order) => sum + order.total, 0)
+        revenue: await paidTotalInUsd(orders)
       }
     });
   } catch (err) {
@@ -99,9 +99,11 @@ const fulfillmentUpdateSchema = z.object({
 });
 
 const settlementPayoutSchema = z.object({
-  payment_method: z.enum(["manual", "bank_transfer", "wise", "stripe_connect", "paypal_payout"]).optional(),
+  payment_method: z.enum(["manual", "bank_transfer", "swift", "wise", "wise_transfer", "stripe_connect", "paypal_payout", "airwallex", "payoneer_payout"]).optional(),
   payout_reference: z.string().trim().max(180).optional(),
-  notes: z.string().trim().max(1000).optional()
+  notes: z.string().trim().max(1000).optional(),
+  payout_fee: z.coerce.number().min(0).optional(),
+  payout_fee_currency: z.string().trim().length(3).optional()
 });
 
 // Used for URBA TECH stock and Excel/manual suppliers that cannot push tracking
