@@ -346,6 +346,8 @@ const locales = {
     totalPipeline: "Total Order Value",
     noProductsYet: "No products yet.",
     supplierId: "Supplier ID",
+    supplierProductId: "Supplier product ID",
+    lastImport: "Last import",
     cost: "Cost",
     stock: "Stock",
     margin: "Margin",
@@ -1000,6 +1002,8 @@ const locales = {
     totalPipeline: "Valeur totale des commandes",
     noProductsYet: "Aucun produit pour le moment.",
     supplierId: "ID fournisseur",
+    supplierProductId: "ID produit fournisseur",
+    lastImport: "Dernier import",
     cost: "Coût",
     stock: "Stock",
     margin: "Marge",
@@ -1930,6 +1934,8 @@ const locales = {
     paymentProviderDescription_konnect: "\u0645\u0632\u0648\u062f \u062a\u0648\u0646\u0633\u064a \u0644\u0644\u062f\u0641\u0639 \u0639\u0628\u0631 \u0627\u0644\u0625\u0646\u062a\u0631\u0646\u062a. \u0641\u0639\u0651\u0644\u0647 \u0641\u0642\u0637 \u0628\u0639\u062f \u0625\u0639\u062f\u0627\u062f \u062d\u0633\u0627\u0628 \u0627\u0644\u062a\u0627\u062c\u0631 \u0648\u062a\u0643\u0627\u0645\u0644 API.",
     paymentProviderDescription_paymee: "\u0645\u0632\u0648\u062f \u062a\u0648\u0646\u0633\u064a \u0644\u0644\u062f\u0641\u0639 \u0639\u0628\u0631 \u0627\u0644\u0625\u0646\u062a\u0631\u0646\u062a. \u0641\u0639\u0651\u0644\u0647 \u0641\u0642\u0637 \u0628\u0639\u062f \u0625\u0639\u062f\u0627\u062f \u062d\u0633\u0627\u0628 \u0627\u0644\u062a\u0627\u062c\u0631 \u0648\u062a\u0643\u0627\u0645\u0644 API.",
     paymentProviderDescription_flouci: "\u0645\u0632\u0648\u062f \u062a\u0648\u0646\u0633\u064a \u0644\u0635\u0641\u062d\u0629 \u0627\u0644\u062f\u0641\u0639. \u0641\u0639\u0651\u0644\u0647 \u0641\u0642\u0637 \u0628\u0639\u062f \u0625\u0639\u062f\u0627\u062f \u062d\u0633\u0627\u0628 \u0627\u0644\u062a\u0627\u062c\u0631 \u0648\u062a\u0643\u0627\u0645\u0644 webhook.",
+    supplierProductId: "\u0645\u0639\u0631\u0651\u0641 \u0645\u0646\u062a\u062c \u0627\u0644\u0645\u0648\u0631\u062f",
+    lastImport: "\u0622\u062e\u0631 \u0627\u0633\u062a\u064a\u0631\u0627\u062f",
 }
 };
 

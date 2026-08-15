@@ -838,46 +838,30 @@ export default function Suppliers() {
       {detailsSupplier && (
         <div className="modal-backdrop" role="presentation" onMouseDown={closeSupplierDetails}>
           <section
-            className="confirm-dialog"
+            className="confirm-dialog supplier-details-dialog"
             role="dialog"
             aria-modal="true"
             aria-labelledby="supplier-details-title"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <h2 id="supplier-details-title">{detailsSupplier.company_name}</h2>
+            <div className="supplier-details-head">
+              <div><p className="eyebrow">{isManualSupplierRecord(detailsSupplier) ? t("excelSuppliersTitle") : t("apiSuppliersTitle")}</p><h2 id="supplier-details-title">{detailsSupplier.company_name}</h2></div>
+              <span className="status-pill connected">{renderIntegration(detailsSupplier)}</span>
+            </div>
               <div className="supplier-details-grid">
-              <div>
-                <strong>{t("integrationType")}</strong>
-                <p>{renderIntegration(detailsSupplier)}</p>
-              </div>
-              <div>
-                <strong>{t("products")}</strong>
-                <p>{detailsSupplier.products_count || 0}</p>
-              </div>
-              <div>
-                <strong>{t("apiUrl")}</strong>
-                <p>{detailsSupplier.api_url || "-"}</p>
-              </div>
-              <div>
-                <strong>{t("supplierNotificationEmail")}</strong>
-                <p>{detailsSupplier.notification_email || detailsSupplier.contact_email || "-"}</p>
-              </div>
-              <div>
-                <strong>{t("authentication")}</strong>
-                <p>{detailsSupplier.auth_mode}</p>
-              </div>
-              <div>
-                <strong>{t("status")}</strong>
-                <p>{getStatusLabel(detailsSupplier.status)}</p>
-              </div>
-              <div>
-                <strong>{t("apiHealth")}</strong>
-                <p>{detailsSupplier.api_health || t("unknown")}</p>
-              </div>
-              <div>
-                <strong>{t("lastSync")}</strong>
-                <p>{formatLastSync(detailsSupplier.last_sync_at)}</p>
-              </div>
+              <div className="supplier-detail-card"><strong>{t("products")}</strong><p>{detailsSupplier.products_count || 0}</p></div>
+              <div className="supplier-detail-card"><strong>{t("status")}</strong><p>{getStatusLabel(detailsSupplier.status)}</p></div>
+              <div className="supplier-detail-card"><strong>{t("supplierNotificationEmail")}</strong><p>{detailsSupplier.notification_email || detailsSupplier.contact_email || "—"}</p></div>
+              {isManualSupplierRecord(detailsSupplier) ? (
+                <div className="supplier-detail-card"><strong>{t("lastImport")}</strong><p>{formatLastSync(detailsSupplier.last_sync_at)}</p></div>
+              ) : (
+                <>
+                  <div className="supplier-detail-card supplier-detail-wide"><strong>{t("apiUrl")}</strong><p>{detailsSupplier.api_url || "—"}</p></div>
+                  <div className="supplier-detail-card"><strong>{t("authentication")}</strong><p>{detailsSupplier.auth_mode || "—"}</p></div>
+                  <div className="supplier-detail-card"><strong>{t("apiHealth")}</strong><p>{detailsSupplier.api_health || t("unknown")}</p></div>
+                  <div className="supplier-detail-card"><strong>{t("lastSync")}</strong><p>{formatLastSync(detailsSupplier.last_sync_at)}</p></div>
+                </>
+              )}
               <div style={{ gridColumn: "1 / -1" }}>
                 <strong>{t("shipsToCountries")}</strong>
                 <p style={{ marginBottom: 8 }}>{formatShipsToDisplay(detailsSupplier.ships_to_countries)}</p>

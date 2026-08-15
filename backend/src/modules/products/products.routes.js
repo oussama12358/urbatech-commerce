@@ -169,6 +169,7 @@ async function serializeProduct(product, categoryName = null, includeInternal = 
     serialized.margin = marginFrom(sellingBasePrice(product), product.cost_price);
     serialized.auto_sync = Boolean(product.auto_sync);
     serialized.supplier_id = product.supplier_id || null;
+    serialized.supplier_name = supplier?.company_name || "";
     serialized.supplier_product_id = product.supplier_product_id || "";
     serialized.product_source = product.product_source || (product.supplier_id ? "api" : "internal");
     serialized.import_batch_id = product.import_batch_id || null;

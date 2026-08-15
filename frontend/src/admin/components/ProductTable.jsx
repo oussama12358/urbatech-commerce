@@ -14,6 +14,8 @@ export default function ProductTable({ products, onDelete }) {
     return t("sourceInternal");
   };
 
+  const supplierName = (product) => product.supplier_name || (suppliers || []).find((supplier) => supplier.id === product.supplier_id)?.company_name || "";
+
   const supplierStatusLabel = (status, stock) => {
     if (typeof stock === "number" && stock <= 0) return t("outOfStock");
     const s = String(status || "").toLowerCase();
@@ -65,7 +67,7 @@ export default function ProductTable({ products, onDelete }) {
           <th>{t("source")}</th>
           <th>{t("supplierStatus")}</th>
           <th>{t("lastSync")}</th>
-          <th>{t("supplierId")}</th>
+          <th>{t("supplierProductId")}</th>
           <th>{t("categories")}</th>
           <th>{t("price")}</th>
           <th>{t("cost")}</th>
@@ -83,7 +85,10 @@ export default function ProductTable({ products, onDelete }) {
           <tr key={product.id}>
             <td>{product.name}</td>
             <td>{product.sku || "-"}</td>
-            <td>{sourceLabel(product.product_source, product.supplier_id)}</td>
+            <td>
+              <div>{sourceLabel(product.product_source, product.supplier_id)}</div>
+              {product.supplier_id && supplierName(product) && <div className="muted">{supplierName(product)}</div>}
+            </td>
             <td>
               {(() => {
                 const statusText = supplierStatusLabel(product.supplier_status, product.stock);
@@ -93,7 +98,7 @@ export default function ProductTable({ products, onDelete }) {
               })()}
             </td>
             <td>{formatLastSync(product.supplier_last_sync_at)}</td>
-            <td>{product.supplier_product_id || "-"}</td>
+            <td>{product.supplier_product_id || "—"}</td>
             <td>{product.category}</td>
             <td>{money(basePrice, baseCurrency)}</td>
             <td>{money(product.cost_price || 0, baseCurrency)}</td>
