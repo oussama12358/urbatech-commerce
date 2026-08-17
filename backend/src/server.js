@@ -78,7 +78,10 @@ app.use((req, res, next) => {
   if (
     req.path.startsWith("/api/suppliers/webhooks/") ||
     req.path === "/api/checkout/webhook" ||
-    req.path === "/api/checkout/paypal/webhook"
+    req.path === "/api/checkout/paypal/webhook" ||
+    req.path === "/api/checkout/paymee/webhook" ||
+    req.path === "/api/checkout/flouci/webhook" ||
+    req.path === "/api/checkout/konnect/webhook"
   ) {
     next();
     return;

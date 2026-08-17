@@ -13,8 +13,9 @@ export async function sendVerificationEmail(email, verificationToken) {
     return missingEmailConfig("RESEND_API_KEY");
   }
 
-  if (!env.emailFrom) {
-    return missingEmailConfig("EMAIL_FROM");
+  const from = env.emailSystemFrom || env.emailFrom;
+  if (!from) {
+    return missingEmailConfig("EMAIL_SYSTEM_FROM or EMAIL_FROM");
   }
 
   const resend = new Resend(env.resendApiKey);
@@ -22,7 +23,7 @@ export async function sendVerificationEmail(email, verificationToken) {
 
   try {
     const result = await resend.emails.send({
-      from: env.emailFrom,
+      from,
       to: email,
       subject: "Verify your URBA TECH email address",
       html: `
@@ -76,8 +77,9 @@ export async function sendPasswordResetEmail(email, resetToken) {
     return missingEmailConfig("RESEND_API_KEY");
   }
 
-  if (!env.emailFrom) {
-    return missingEmailConfig("EMAIL_FROM");
+  const from = env.emailSystemFrom || env.emailFrom;
+  if (!from) {
+    return missingEmailConfig("EMAIL_SYSTEM_FROM or EMAIL_FROM");
   }
 
   const resend = new Resend(env.resendApiKey);
@@ -85,7 +87,7 @@ export async function sendPasswordResetEmail(email, resetToken) {
 
   try {
     const result = await resend.emails.send({
-      from: env.emailFrom,
+      from,
       to: email,
       subject: "Reset your URBA TECH password",
       html: `

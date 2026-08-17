@@ -85,25 +85,11 @@ export default function Settings() {
       <section className="panel">
         <h2>{t("payments")}</h2>
         <div className="kv">
-          <div className="kv-row">
-            <span>{t("stripe")}</span>
-            <div className="badge-row">
-              <StatusBadge active={payments.stripe?.configured} label={t("configured")} />
-              <StatusBadge active={payments.stripe?.enabled} label={t("enabled")} />
-            </div>
-          </div>
-          <div className="kv-row">
-            <span>{t("paypal")}</span>
-            <div className="badge-row">
-              <StatusBadge active={payments.paypal?.configured} label={t("configured")} />
-              <StatusBadge active={payments.paypal?.enabled} label={t("enabled")} />
-            </div>
-          </div>
-          {paymentProviders.map((provider) => (
-            <div className="kv-row" key={provider.id}>
-              <span>{provider.name}</span>
+          {Object.entries(payments).map(([providerKey, provider]) => (
+            <div className="kv-row" key={providerKey}>
+              <span>{provider.name || providerKey}</span>
               <div className="badge-row">
-                <StatusBadge active={provider.merchant_eligible} label={t("merchantEligible")} />
+                <StatusBadge active={provider.configured} label={t("configured")} />
                 <StatusBadge active={provider.enabled} label={t("enabled")} />
               </div>
             </div>

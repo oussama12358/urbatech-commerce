@@ -20,6 +20,29 @@ function CountryFlagImage({ src, alt }) {
   return <img className="country-flag-img" src={src} alt={alt} loading="lazy" />;
 }
 
+function leadTimePriority(leadTime) {
+  const text = String(leadTime || "").trim().toLowerCase();
+  const values = [...text.matchAll(/\d+(?:[.,]\d+)?/g)].map((match) => Number(match[0].replace(",", ".")));
+  if (!values.length) return -1;
+  const maximum = Math.max(...values);
+  if (/month|mois|شهر/.test(text)) return maximum * 30;
+  if (/week|semaine|أسبوع|اسبوع/.test(text)) return maximum * 7;
+  return maximum;
+}
+
+function getCartDeliveryEstimate(lines) {
+  const leadTimes = lines.map((item) => String(item.lead || "").trim()).filter(Boolean);
+  // Use the longest known lead time. A missing value on another product must
+  // not hide a valid lead time that the supplier/stock record provides.
+  if (!leadTimes.length) return t("deliveryTimeToConfirm");
+  const uniqueLeadTimes = [...new Set(leadTimes)];
+  if (uniqueLeadTimes.length === 1) return uniqueLeadTimes[0];
+  const longestLeadTime = uniqueLeadTimes.reduce((current, value) =>
+    leadTimePriority(value) > leadTimePriority(current) ? value : current
+  );
+  return t("deliveryUpTo").replace("{leadTime}", longestLeadTime);
+}
+
 function CountryAutocomplete({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(() => (value ? value.name : ""));
@@ -339,6 +362,11 @@ export default function CheckoutPage() {
   // payment gateway is the source of truth and returns its own decline/error
   // when an account, method, card or currency is not accepted.
   const availablePaymentProviders = enabledPaymentProviders;
+  const deliveryEstimate = useMemo(() => getCartDeliveryEstimate(cartLines), [cartLines]);
+  const hasItemsWithoutLeadTime = useMemo(
+    () => cartLines.some((item) => !String(item.lead || "").trim()),
+    [cartLines]
+  );
 
   const handleCountryChange = useCallback((nextCountry) => {
     setSelectedCountry(nextCountry);
@@ -656,14 +684,19 @@ export default function CheckoutPage() {
                 : restricted;
               return (
                 <div key={item.id} className={`summary-item ${unavailable ? "summary-item-unavailable" : ""}`}>
-                  <span>
-                    {item.name}
-                    {unavailable ? (
-                      <em className="country-unavailable-note">
-                        {selectedCountry ? t("notAvailableInYourCountry") : t("checkAvailabilityInCountry")}
-                      </em>
-                    ) : null}
-                  </span>
+                  <div className="summary-item-product">
+                    <span className="summary-item-name">
+                      {item.name}
+                      {unavailable ? (
+                        <em className="country-unavailable-note">
+                          {selectedCountry ? t("notAvailableInYourCountry") : t("checkAvailabilityInCountry")}
+                        </em>
+                      ) : null}
+                    </span>
+                    <small className="summary-item-lead">
+                      {t("leadTime")}: {String(item.lead || "").trim() || "—"}
+                    </small>
+                  </div>
                   <span>{item.qty} × {money(item.price, item.currency)}</span>
                   <strong>{money(item.qty * item.price, item.currency)}</strong>
                 </div>
@@ -677,7 +710,11 @@ export default function CheckoutPage() {
           )}
           <div className="summary-meta">
             <span>{t("estimatedDelivery")}</span>
-            <strong>{t("businessDays")}</strong>
+            <strong className="summary-delivery-notices">
+              {cartLines.length > 1 ? <span>{t("itemsMayArriveSeparately")}</span> : null}
+              {hasItemsWithoutLeadTime ? <span>{t("deliveryTimeToConfirm")}</span> : null}
+              {cartLines.length === 1 && !hasItemsWithoutLeadTime ? <span>{deliveryEstimate}</span> : null}
+            </strong>
           </div>
           <SummaryBox totals={totals} />
           {availablePaymentProviders.length ? (

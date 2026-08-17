@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Check, FileText, ShoppingCart } from "lucide-react";
-import ProductArt from "../components/ProductArt.jsx";
+import ProductGallery from "../components/ProductGallery.jsx";
 import Loading from "../../shared/components/Loading.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
 import { createApiClient } from "../../shared/lib/api.js";
@@ -172,7 +172,7 @@ export default function ProductPage() {
     <main className="main">
       <section className="detail-grid">
         <div className="detail-media">
-          <ProductArt product={product} />
+          <ProductGallery product={product} />
           <span className={`badge ${notAvailableInCountry ? "badge-unavailable" : ""}`}>
             {notAvailableInCountry ? t("notAvailableInYourCountry") : availability}
           </span>

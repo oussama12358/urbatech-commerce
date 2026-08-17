@@ -18,12 +18,20 @@ import { carrierName, carrierOptions, resolveTrackingUrl } from "../../utils/car
 export const adminRouter = Router();
 const onlineSupplierStatuses = ["Connected", "Active"];
 
-function totalsByCurrency(rows, amountForRow) {
-  return rows.reduce((totals, row) => {
-    const currency = String(row.currency || "USD").toUpperCase();
-    totals[currency] = Math.round(((totals[currency] || 0) + Number(amountForRow(row) || 0)) * 100) / 100;
-    return totals;
-  }, {});
+async function totalInCurrency(rows, amountForRow, targetCurrency = "USD") {
+  const target = String(targetCurrency || "USD").toUpperCase();
+  const quotes = await Promise.all(rows.map((row) =>
+    getExchangeQuote(Number(amountForRow(row) || 0), row.currency || "USD", target)
+  ));
+  return roundCurrency(quotes.reduce((sum, quote) => sum + Number(quote.amount || 0), 0), target);
+}
+
+async function convertCurrencyTotals(totals = {}, targetCurrency = "USD") {
+  const target = String(targetCurrency || "USD").toUpperCase();
+  const quotes = await Promise.all(Object.entries(totals).map(([currency, amount]) =>
+    getExchangeQuote(Number(amount || 0), currency, target)
+  ));
+  return { [target]: roundCurrency(quotes.reduce((sum, quote) => sum + Number(quote.amount || 0), 0), target) };
 }
 
 async function paidTotalInUsd(orders = []) {
@@ -381,35 +389,30 @@ adminRouter.get("/reports", async (_req, res, next) => {
   try {
     const orders = await getAllOrders();
     const suppliers = await getCollection("suppliers");
+    const appSettings = await getCollection("app_settings");
+    const reportingSetting = await appSettings.findOne({ key: "reporting_currency" });
+    const reportingCurrency = String(reportingSetting?.value || "USD").toUpperCase();
     const connectedSuppliers = await suppliers.countDocuments({ status: { $in: onlineSupplierStatuses } });
       const totalSuppliers = await suppliers.countDocuments();
       const paidOrders = orders.filter((order) => order.payment_status === "paid");
     const dispatchedOrders = orders.filter((order) => order.supplier_order_id || order.supplier_dispatches?.length);
-    const revenueByCurrency = totalsByCurrency(paidOrders, (order) => order.total);
-    const grossProfitByCurrency = totalsByCurrency(
-      paidOrders,
-      (order) => order.gross_profit ?? order.platform_commission ?? order.product_commission ?? 0
-    );
     const settlements = await summarizeSupplierSettlements();
-    const pendingRevenueByCurrency = totalsByCurrency(
-      orders.filter((order) => order.payment_status !== "paid"),
-      (order) => order.total
-    );
 
     res.json({
       data: {
+        reporting_currency: reportingCurrency,
         connected_suppliers: connectedSuppliers,
           total_suppliers: totalSuppliers,
         total_orders: orders.length,
         paid_orders: paidOrders.length,
         supplier_dispatched_orders: dispatchedOrders.length,
-        revenue_by_currency: revenueByCurrency,
-        gross_profit_by_currency: grossProfitByCurrency,
-        pending_revenue_by_currency: pendingRevenueByCurrency,
-        supplier_payout_pending: settlements.pending,
-        supplier_payout_paid: settlements.paid,
-        supplier_payout_held: settlements.held,
-        supplier_payout_cancelled: settlements.cancelled,
+        revenue_by_currency: { [reportingCurrency]: await totalInCurrency(paidOrders, (order) => order.total, reportingCurrency) },
+        gross_profit_by_currency: { [reportingCurrency]: await totalInCurrency(paidOrders, (order) => order.gross_profit ?? order.platform_commission ?? order.product_commission ?? 0, reportingCurrency) },
+        pending_revenue_by_currency: { [reportingCurrency]: await totalInCurrency(orders.filter((order) => order.payment_status !== "paid"), (order) => order.total, reportingCurrency) },
+        supplier_payout_pending: await convertCurrencyTotals(settlements.pending, reportingCurrency),
+        supplier_payout_paid: await convertCurrencyTotals(settlements.paid, reportingCurrency),
+        supplier_payout_held: await convertCurrencyTotals(settlements.held, reportingCurrency),
+        supplier_payout_cancelled: await convertCurrencyTotals(settlements.cancelled, reportingCurrency),
         fulfillment_rate: orders.length ? Math.round((dispatchedOrders.length / orders.length) * 100) : 0
       }
     });

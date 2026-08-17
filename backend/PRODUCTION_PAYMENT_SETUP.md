@@ -1,49 +1,49 @@
-Stripe and PayPal production setup
+# Production payment setup
 
-This document explains the environment variables and steps required to enable production-ready payments for Stripe and PayPal.
+Every payment provider has a server-side checkout flow. An order becomes **Paid** only after the provider's verified confirmation, then supplier dispatch starts. A browser redirect alone can never mark an order paid.
 
-Environment variables (backend):
+## Shared requirements
 
-- STRIPE_SECRET_KEY: Your Stripe secret key (sk_live_...)
-- STRIPE_WEBHOOK_SECRET: The webhook signing secret from your Stripe webhook endpoint (whsec_...)
+- Use public **HTTPS** values for `API_ORIGIN` and `CLIENT_ORIGIN` in production.
+- Put provider credentials only in `backend/.env` or encrypted deployment settings. Never use frontend variables.
+- Restart the backend after changing environment variables, then enable the configured provider in Admin → Payments.
 
-- PAYPAL_CLIENT_ID: PayPal REST client id
-- PAYPAL_CLIENT_SECRET: PayPal REST client secret
-- PAYPAL_MODE: sandbox or live (use "live" in production)
-- PAYPAL_WEBHOOK_ID: The webhook ID created in your PayPal app (used to verify webhook signatures)
+## Stripe
 
-- API_ORIGIN: The backend origin used in PayPal return URLs (e.g. https://api.yoursite.com)
-- CLIENT_ORIGIN: The storefront origin (e.g. https://shop.yoursite.com)
+- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
+- Webhook: `${API_ORIGIN}/api/checkout/webhook`
+- Subscribe to `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
 
-Notes and checklist:
+## PayPal
 
-1. Node runtime
-- Use Node 18+ (recommended) so `fetch` is available globally. If you cannot use Node 18+, install a fetch polyfill like `node-fetch` and load it at startup.
+- `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE`, `PAYPAL_WEBHOOK_ID`
+- Return URL: `${API_ORIGIN}/api/checkout/paypal/return`
+- Webhook: `${API_ORIGIN}/api/checkout/paypal/webhook`
+- The backend checks PayPal's webhook signature before accepting payment.
 
-2. Stripe
-- Create a Stripe webhook that points to: `${API_ORIGIN}/api/checkout/webhook` and subscribe to relevant events (e.g., `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `payment_intent.succeeded`).
-- Set `STRIPE_WEBHOOK_SECRET` in the environment.
-- Ensure the backend is reachable from Stripe (use HTTPS in production).
-- The server will validate the signature and update order/payment status idempotently.
+## Konnect
 
-3. PayPal
-- Create a PayPal REST app and retrieve `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`.
-- Configure the app to create a webhook and note the webhook id; set it as `PAYPAL_WEBHOOK_ID`.
-- Your app should provide a PayPal return URL (configured in code as `${API_ORIGIN}/api/checkout/paypal/return`) that captures approved orders.
-- The webhook endpoint `${API_ORIGIN}/api/checkout/paypal/webhook` is implemented and will verify signatures using PayPal's `verify-webhook-signature` API.
+- `KONNECT_API_KEY`, `KONNECT_RECEIVER_WALLET_ID`
+- Optional `KONNECT_API_BASE_URL` (production default: `https://api.konnect.network/api/v2`)
+- Webhook: `${API_ORIGIN}/api/checkout/konnect/webhook`
+- The webhook's `payment_ref` is never trusted by itself: URBA TECH fetches the payment from Konnect and checks completed status, successful transaction, order ID, currency, and reached amount.
+- This adapter supports TND, EUR and USD.
 
-4. Webhook reliability
-- Use HTTPS and ensure your firewall allows inbound traffic from Stripe and PayPal.
-- For PayPal, ensure the webhook is configured in the same environment (sandbox vs live) matching `PAYPAL_MODE`.
+## Paymee
 
-5. Admin / enabling providers
-- Payment providers are stored in the `payment_providers` collection. You can enable/disable providers via the admin API: `PUT /api/admin/payment-providers/:id` (requires admin auth).
+- `PAYMEE_API_KEY`, `PAYMEE_MODE` (`sandbox` or `live`)
+- Webhook: `${API_ORIGIN}/api/checkout/paymee/webhook`
+- The backend verifies Paymee's `check_sum`, token, order ID and amount before marking the order paid.
+- Paymee is TND only in this implementation.
 
-6. Testing locally
-- For Stripe, use the Stripe CLI to forward webhooks to your local server and obtain a webhook secret.
-- For PayPal, use sandbox accounts and create webhooks in the PayPal developer dashboard.
+## Flouci
 
-If you want, I can:
-- Add example `.env` and a small script to run with a `node-fetch` polyfill for Node <18.
-- Add automated tests for webhook handlers.
-- Walk through setting up webhooks on Stripe/PayPal step-by-step.
+- `FLOUCI_PUBLIC_KEY`, `FLOUCI_PRIVATE_KEY`
+- Optional `FLOUCI_API_BASE_URL` (default: `https://developers.flouci.com/api/v2`)
+- Webhook: `${API_ORIGIN}/api/checkout/flouci/webhook`
+- Every notification triggers a server-side `verify_payment` call. It requires `SUCCESS`, the expected millime amount and the matching order ID.
+- Flouci is TND only in this implementation.
+
+## Safe tests
+
+Use each provider's sandbox/test account first. Test success, cancellation, duplicate webhooks, changed amount and unsupported currency. Confirm a supplier order is dispatched once, only after a verified paid order.

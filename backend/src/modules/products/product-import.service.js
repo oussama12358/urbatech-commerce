@@ -47,6 +47,16 @@ const headerAliases = {
   images: ["images", "image", "image urls", "image_urls", "photo", "photos"]
 };
 
+const EMBEDDED_IMAGE_MIME_TYPES = {
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif"
+};
+const MAX_EMBEDDED_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_IMAGES_PER_PRODUCT = 8;
+
 function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
@@ -73,6 +83,15 @@ function splitList(value) {
     .split(/\s*[|;]\s*|\s*,\s*/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function embeddedImageDataUrl(workbook, imageId) {
+  const image = workbook.getImage(imageId);
+  const extension = String(image?.extension || "").toLowerCase();
+  const mimeType = EMBEDDED_IMAGE_MIME_TYPES[extension];
+  const buffer = image?.buffer;
+  if (!mimeType || !Buffer.isBuffer(buffer) || !buffer.length || buffer.length > MAX_EMBEDDED_IMAGE_BYTES) return null;
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
 }
 
 function normalizeSupplierStatus(status, stock) {
@@ -171,6 +190,17 @@ async function parseRows({ fileName, contentBase64, contentText }) {
     worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
       headers[colNumber - 1] = String(cell.value || "").trim();
     });
+    const imagesByWorksheetRow = new Map();
+    // ExcelJS exposes floating images with their top-left anchor. A picture
+    // placed on a product row belongs to that row, regardless of its column.
+    worksheet.getImages().forEach((drawing) => {
+      const rowIndex = Number(drawing?.range?.tl?.nativeRow);
+      const image = embeddedImageDataUrl(workbook, drawing?.imageId);
+      if (!Number.isInteger(rowIndex) || !image) return;
+      const current = imagesByWorksheetRow.get(rowIndex) || [];
+      if (current.length < MAX_IMAGES_PER_PRODUCT) current.push(image);
+      imagesByWorksheetRow.set(rowIndex, current);
+    });
     const rows = [];
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
       if (rowNumber === 1) return;
@@ -182,6 +212,8 @@ async function parseRows({ fileName, contentBase64, contentText }) {
         item[header] = value;
       });
       if (Object.values(item).some((value) => String(value || "").trim())) {
+        const embeddedImages = imagesByWorksheetRow.get(rowNumber - 1) || [];
+        if (embeddedImages.length) item.__embedded_images = embeddedImages;
         rows.push(item);
       }
     });
@@ -243,7 +275,7 @@ function mapRow(row) {
     warranty: String(get("warranty") || "").trim(),
     lead: String(get("lead") || "").trim(),
     specs: splitList(get("specs")),
-    images: splitList(get("images"))
+    images: [...splitList(get("images")), ...(Array.isArray(row.__embedded_images) ? row.__embedded_images : [])].slice(0, MAX_IMAGES_PER_PRODUCT)
   };
 }
 
@@ -292,7 +324,12 @@ export async function previewSupplierProductImport({ fileName, contentBase64, co
     valid_count: validRows.length,
     error_count: errors.length,
     errors: errors.slice(0, 50),
-    sample: validRows.map(({ product }) => product)
+    // Keep preview responses small. Embedded images are still imported in the
+    // final import pass, but their base64 content is not sent back to the UI.
+    sample: validRows.map(({ product }) => ({
+      ...product,
+      images: product.images.map((image) => String(image).startsWith("data:image/") ? "[Embedded Excel image]" : image)
+    }))
   };
 }
 

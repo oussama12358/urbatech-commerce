@@ -323,7 +323,12 @@ export async function notifySupplierNewOrder(orderId, supplierId, dispatch = {})
           <strong>Customer:</strong> ${escapeHtml(orderCustomerName(order))}<br>
           <strong>Email:</strong> ${escapeHtml(customer.customerEmail || customer.email || "-")}<br>
           <strong>Phone:</strong> ${escapeHtml(customer.phone || "-")}<br>
-          <strong>Address:</strong> ${escapeHtml(customer.address || customer.shippingAddress || "-")}
+          <strong>Address:</strong> ${escapeHtml(customer.address || customer.shippingAddress || "-")}<br>
+          <strong>Apartment / address line 2:</strong> ${escapeHtml(customer.apartment || customer.address2 || "-")}<br>
+          <strong>City:</strong> ${escapeHtml(customer.city || "-")}<br>
+          <strong>Postal code:</strong> ${escapeHtml(customer.postalCode || customer.postal_code || customer.zip || "-")}<br>
+          <strong>Country:</strong> ${escapeHtml(customer.country || "-")}<br>
+          <strong>Delivery notes:</strong> ${escapeHtml(customer.notes || "-")}
         </p>
         ${supplierRows(supplierItems)}
         <p>

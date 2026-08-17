@@ -353,6 +353,11 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
 
   const order = await orders.findOne({ id: orderId });
   if (!order) throw new Error("Order not found");
+  if (String(order.payment_status || "").toLowerCase() !== "paid") {
+    const error = new Error("Supplier dispatch is allowed only after the customer payment is confirmed.");
+    error.status = 409;
+    throw error;
+  }
 
   const items = await orderItems.find({ order_id: orderId }).toArray();
   const grouped = new Map();

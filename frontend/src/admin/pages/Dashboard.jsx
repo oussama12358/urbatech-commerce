@@ -1,21 +1,25 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DashboardCards from "../components/DashboardCards.jsx";
 import ProductTable from "../components/ProductTable.jsx";
 import { useStore } from "../../store/StoreContext.jsx";
 import { t, useLocale } from "../../i18n.js";
+import { createApiClient } from "../../shared/lib/api.js";
 
 export default function Dashboard() {
   useLocale();
-  const { products, orders, categories, suppliers } = useStore();
+  const { products, orders, categories, suppliers, user } = useStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [status, setStatus] = useState("All");
-  // Never add EUR, USD, TND, etc. as if they were the same unit.
-  const revenueByCurrency = orders.reduce((totals, order) => {
-    const currency = String(order.currency || "USD").toUpperCase();
-    totals[currency] = Number(totals[currency] || 0) + Number(order.total || 0);
-    return totals;
-  }, {});
+  const [reportingRevenue, setReportingRevenue] = useState(0);
+
+  useEffect(() => {
+    if (!user?.token) return;
+    const api = createApiClient(user.token);
+    api("/admin/dashboard")
+      .then((json) => setReportingRevenue(Number(json?.data?.revenue || 0)))
+      .catch(() => setReportingRevenue(0));
+  }, [user?.token, orders]);
   // Use a fixed stock filter to match admin Products page: All / In stock / Low / Out
   const statuses = ["All", "In stock", "Low", "Out"];
 
@@ -43,7 +47,7 @@ export default function Dashboard() {
 
   return (
     <main className="admin-main">
-      <DashboardCards productsCount={products.length} suppliersCount={suppliers.length} ordersCount={orders.length} revenueByCurrency={revenueByCurrency} />
+      <DashboardCards productsCount={products.length} suppliersCount={suppliers.length} ordersCount={orders.length} revenueByCurrency={{ USD: reportingRevenue }} />
       <section className="panel" style={{ marginTop: 22 }}>
         <div className="admin-section-head">
           <h2>{t("recentProducts")}</h2>

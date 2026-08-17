@@ -19,7 +19,8 @@ export const env = {
   applePrivateKeyLocation: process.env.APPLE_PRIVATE_KEY_LOCATION || "",
   applePrivateKeyString: process.env.APPLE_PRIVATE_KEY_STRING || "",
   appleCallbackUrl: process.env.APPLE_CALLBACK_URL || "http://127.0.0.1:8081/api/auth/apple/callback",
-  emailFrom: process.env.EMAIL_FROM || "URBA TECH <noreply@urbatechinter.com>",
+  emailFrom: process.env.EMAIL_FROM || "URBA TECH <contact@urbatechinter.com>",
+  emailSystemFrom: process.env.EMAIL_SYSTEM_FROM || "URBA TECH <noreply@urbatechinter.com>",
   resendApiKey: process.env.RESEND_API_KEY || "",
   adminNotificationEmails: process.env.ADMIN_NOTIFICATION_EMAILS
     ? process.env.ADMIN_NOTIFICATION_EMAILS.split(",").map((email) => email.trim()).filter(Boolean)
@@ -32,15 +33,15 @@ export const env = {
   paypalMode: process.env.PAYPAL_MODE || "sandbox",
   // PayPal webhook ID (from PayPal app webhook configuration) for signature verification
   paypalWebhookId: process.env.PAYPAL_WEBHOOK_ID || "",
-  // Tunisian payment providers. These remain inactive until their respective
-  // checkout and signed-webhook adapters are implemented and configured.
+  // Tunisian payment providers. Keys must remain server-side.
   konnectApiKey: process.env.KONNECT_API_KEY || "",
-  konnectWebhookSecret: process.env.KONNECT_WEBHOOK_SECRET || "",
+  konnectReceiverWalletId: process.env.KONNECT_RECEIVER_WALLET_ID || "",
+  konnectApiBaseUrl: process.env.KONNECT_API_BASE_URL || "https://api.konnect.network/api/v2",
   paymeeApiKey: process.env.PAYMEE_API_KEY || "",
-  paymeeWebhookSecret: process.env.PAYMEE_WEBHOOK_SECRET || "",
-  flouciApiKey: process.env.FLOUCI_API_KEY || "",
-  flouciAppToken: process.env.FLOUCI_APP_TOKEN || "",
-  flouciWebhookSecret: process.env.FLOUCI_WEBHOOK_SECRET || "",
+  paymeeMode: process.env.PAYMEE_MODE || "sandbox",
+  flouciPublicKey: process.env.FLOUCI_PUBLIC_KEY || process.env.FLOUCI_APP_TOKEN || "",
+  flouciPrivateKey: process.env.FLOUCI_PRIVATE_KEY || process.env.FLOUCI_API_KEY || "",
+  flouciApiBaseUrl: process.env.FLOUCI_API_BASE_URL || "https://developers.flouci.com/api/v2",
   // Open Exchange Rates compatible endpoint returning rates relative to USD.
   exchangeRateApiUrl: process.env.EXCHANGE_RATE_API_URL || "https://open.er-api.com/v6/latest/USD",
   exchangeRateCacheMs: Number(process.env.EXCHANGE_RATE_CACHE_MS || 6 * 60 * 60 * 1000),

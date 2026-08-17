@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getCollection } from "../../db/mongo.js";
 import { env } from "../../config/env.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
-import { stripeEnabled } from "../payments/payment.service.js";
+import { ensureDefaultPaymentProviders, isProviderConfigured } from "../payments/payment.service.js";
 
 const settingsSchema = z.object({
   storefrontEnabled: z.boolean(),
@@ -22,22 +22,14 @@ async function ensureSettingsDocument() {
 }
 
 async function getPaymentsStatus() {
+  await ensureDefaultPaymentProviders();
   const providers = await getCollection("payment_providers");
   const allProviders = await providers.find({}).project({ _id: 0, id: 1, provider_key: 1, name: 1, enabled: 1, config: 1 }).toArray();
-
-  const stripeProvider = allProviders.find((p) => p.provider_key === "stripe");
-  const paypalProvider = allProviders.find((p) => p.provider_key === "paypal");
-
-  return {
-    stripe: {
-      configured: Boolean(stripeEnabled()),
-      enabled: stripeProvider ? Boolean(stripeProvider.enabled) : false
-    },
-    paypal: {
-      configured: Boolean(env.paypalClientId && env.paypalClientSecret),
-      enabled: paypalProvider ? Boolean(paypalProvider.enabled) : false
-    }
-  };
+  return Object.fromEntries(allProviders.map((provider) => [provider.provider_key, {
+    name: provider.name,
+    configured: isProviderConfigured(provider),
+    enabled: Boolean(provider.enabled)
+  }]));
 }
 
 async function getSettings() {

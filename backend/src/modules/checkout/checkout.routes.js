@@ -9,10 +9,22 @@ import { notifyCustomerPaymentReceived } from "../notifications/notification.ser
 import {
   getPaymentProviderRecordByKey,
   getStripeClient,
+  isFlouciProvider,
+  isKonnectProvider,
   isPayPalProvider,
+  isPaymeeProvider,
   isRedirectPaymentProvider,
   isStripeProvider
 } from "../payments/payment.service.js";
+import {
+  createFlouciPayment,
+  createKonnectPayment,
+  createPaymeePayment,
+  paymeePaymentSucceeded,
+  verifyFlouciPayment,
+  verifyKonnectPayment,
+  verifyPaymeeChecksum
+} from "../payments/local-payment.service.js";
 import { minorUnitMultiplier, roundCurrency } from "../currencies/currency.service.js";
 
 export const checkoutRouter = Router();
@@ -231,10 +243,128 @@ checkoutRouter.post("/session", requireAuth, async (req, res, next) => {
       }
     }
 
+    if (isKonnectProvider(provider.provider_key) || isPaymeeProvider(provider.provider_key) || isFlouciProvider(provider.provider_key)) {
+      let payment;
+      if (isKonnectProvider(provider.provider_key)) payment = await createKonnectPayment(order);
+      if (isPaymeeProvider(provider.provider_key)) payment = await createPaymeePayment(order);
+      if (isFlouciProvider(provider.provider_key)) payment = await createFlouciPayment(order);
+
+      await orders.updateOne(
+        { id: order.id },
+        { $set: { ...updateFields, [`${provider.provider_key}_payment_id`]: payment.providerPaymentId } }
+      );
+      await recordPaymentTransaction({
+        order,
+        providerKey: provider.provider_key,
+        providerPaymentId: payment.providerPaymentId,
+        metadata: payment.metadata
+      });
+      res.json({ url: payment.url });
+      return;
+    }
+
     res.status(400).json({ error: "This payment method does not support direct online payment." });
   } catch (err) {
     next(err);
   }
+});
+
+async function findOrderForProviderPayment(providerKey, providerPaymentId, fallbackOrderId = null) {
+  const orders = await getCollection("orders");
+  if (fallbackOrderId) {
+    const byId = await orders.findOne({ id: fallbackOrderId });
+    if (byId && byId.payment_method === providerKey) return byId;
+  }
+  const transactions = await getCollection("payment_transactions");
+  const transaction = await transactions.findOne({ provider_key: providerKey, provider_payment_id: String(providerPaymentId) });
+  return transaction ? orders.findOne({ id: transaction.order_id }) : null;
+}
+
+async function markProviderPaymentFailed(order, providerKey, status, metadata = {}) {
+  if (!order || order.payment_status === "paid") return;
+  const orders = await getCollection("orders");
+  await orders.updateOne({ id: order.id }, { $set: { payment_status: "denied", status: "Payment denied", payment_failure_reason: status } });
+  await recordPaymentTransaction({ order, providerKey, status: "failed", metadata });
+}
+
+// Konnect calls this endpoint with ?payment_ref=. The request itself is not
+// trusted: the server obtains the payment from Konnect again before marking paid.
+checkoutRouter.get("/konnect/webhook", async (req, res, next) => {
+  try {
+    const paymentId = String(req.query.payment_ref || "");
+    if (!paymentId) {
+      res.status(400).json({ error: "Missing Konnect payment reference." });
+      return;
+    }
+    const order = await findOrderForProviderPayment("konnect", paymentId);
+    if (!order) {
+      res.status(404).json({ error: "Order not found." });
+      return;
+    }
+    const verification = await verifyKonnectPayment(paymentId, order);
+    if (verification.paid) await completePaidOrder(order, "konnect", paymentId, verification.metadata);
+    else if (["failed", "expired", "cancelled"].includes(verification.status)) await markProviderPaymentFailed(order, "konnect", verification.status, verification.metadata);
+    res.json({ received: true });
+  } catch (err) { next(err); }
+});
+
+// Paymee signs its webhook with MD5(token + payment_status + API token).
+// The matching order, amount and token are checked before the order is fulfilled.
+checkoutRouter.post("/paymee/webhook", async (req, res, next) => {
+  try {
+    const payload = req.body || {};
+    if (!verifyPaymeeChecksum(payload)) {
+      res.status(400).json({ error: "Invalid Paymee webhook checksum." });
+      return;
+    }
+    const order = await findOrderForProviderPayment("paymee", payload.token, payload.order_id);
+    if (!order || String(payload.order_id || "") !== order.id || String(order.currency || "").toUpperCase() !== "TND" || Number(payload.amount) !== Number(roundCurrency(order.total, "TND"))) {
+      res.status(400).json({ error: "Paymee payment does not match the order." });
+      return;
+    }
+    const metadata = { paymee_token: payload.token, paymee_transaction_id: payload.transaction_id || null };
+    if (paymeePaymentSucceeded(payload)) await completePaidOrder(order, "paymee", String(payload.transaction_id || payload.token), metadata);
+    else await markProviderPaymentFailed(order, "paymee", "failed", metadata);
+    res.json({ received: true });
+  } catch (err) { next(err); }
+});
+
+async function verifyAndCompleteFlouci(paymentId, orderId) {
+  const order = await findOrderForProviderPayment("flouci", paymentId, orderId);
+  if (!order) return { order: null, paid: false };
+  const verification = await verifyFlouciPayment(paymentId, order);
+  if (verification.paid) await completePaidOrder(order, "flouci", paymentId, verification.metadata);
+  else if (["failure", "expired"].includes(verification.status)) await markProviderPaymentFailed(order, "flouci", verification.status, verification.metadata);
+  return { order, paid: verification.paid };
+}
+
+// Flouci advises merchants to verify server-side after every success/failure webhook.
+checkoutRouter.post("/flouci/webhook", async (req, res, next) => {
+  try {
+    const payload = req.body || {};
+    const paymentId = payload.payment_id || payload.id || payload.data?.payment_id || payload.result?.payment_id;
+    if (!paymentId) {
+      res.status(400).json({ error: "Missing Flouci payment ID." });
+      return;
+    }
+    await verifyAndCompleteFlouci(String(paymentId), payload.developer_tracking_id || payload.order_id || payload.data?.developer_tracking_id);
+    res.json({ received: true });
+  } catch (err) { next(err); }
+});
+
+// A customer return is only a convenience redirect. The same server-side
+// Flouci verification is run, so a forged browser redirect cannot mark paid.
+checkoutRouter.get("/flouci/return", async (req, res, next) => {
+  try {
+    const paymentId = String(req.query.payment_id || req.query.id || "");
+    const orderId = String(req.query.order_id || "");
+    if (!paymentId || !orderId) {
+      res.redirect(`${env.clientOrigin}/checkout?payment=processing`);
+      return;
+    }
+    const result = await verifyAndCompleteFlouci(paymentId, orderId);
+    res.redirect(`${env.clientOrigin}/orders/${encodeURIComponent(orderId)}?payment=${result.paid ? "success" : "processing"}`);
+  } catch (err) { next(err); }
 });
 
 checkoutRouter.post("/webhook", async (req, res, next) => {
