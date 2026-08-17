@@ -42,15 +42,25 @@ export default function Settlements() {
     if (!automatic && !window.confirm(`Confirm that you have already sent ${money(settlement.amount || 0, settlement.currency)} to this supplier outside URBA TECH.`)) return;
     const reference = automatic ? "" : window.prompt(t("payoutReferencePrompt"), settlement.payout_reference || "");
     if (reference === null) return;
-    const fee = automatic ? "0" : window.prompt("Payout fee (optional, in settlement currency)", "0");
-    if (fee === null) return;
+    let paidAmount;
+    let paidCurrency;
+    if (!automatic && window.confirm(`Did you pay in a currency different from ${settlement.currency || "USD"}?`)) {
+      paidAmount = window.prompt("Actual amount sent", "");
+      if (paidAmount === null) return;
+      paidCurrency = window.prompt("Actual payment currency (for example TND)", "");
+      if (paidCurrency === null) return;
+      if (!paidAmount.trim() || !paidCurrency.trim()) {
+        setError("Enter both the actual amount and currency, or cancel the different-currency option.");
+        return;
+      }
+    }
     setBusyId(settlement.id);
     setError("");
     try {
       const api = createApiClient(user.token);
       await api(`/admin/settlements/${settlement.id}/pay`, {
         method: "POST",
-        body: JSON.stringify({ payment_method: method, payout_reference: reference, payout_fee: Number(fee || 0), payout_fee_currency: settlement.currency })
+        body: JSON.stringify({ payment_method: method, payout_reference: reference, ...(paidAmount ? { paid_amount: Number(paidAmount), paid_currency: paidCurrency.trim().toUpperCase() } : {}) })
       });
       await load();
     } catch (err) {

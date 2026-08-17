@@ -38,7 +38,7 @@ async function executePayout(settlement, payload = {}) {
   if (!supplier) throw new Error("Supplier not found for payout.");
   const method = payload.payment_method || settlement.payout_method || supplier.payout_method || "manual";
   const currency = normalizeCurrency(settlement.currency);
-  if (["manual", "bank_transfer", "swift", "wise", "wise_transfer"].includes(method)) {
+  if (["manual", "bank_transfer", "swift", "wise", "wise_transfer", "konnect_manual", "flouci_manual", "paymee_manual", "stripe_manual", "paypal_manual"].includes(method)) {
     // The transfer happens outside the application. Admin confirms it only after it was actually sent.
     return {
       status: "paid",
@@ -158,6 +158,9 @@ export async function ensureSupplierSettlementsForOrder(orderId) {
           order_id: doc.order_id,
           supplier_id: doc.supplier_id,
           currency: doc.currency,
+          // This is the payable snapshot agreed for this order. It must never
+          // be recalculated by a later re-sync using a newer FX rate.
+          amount: doc.amount,
           status: doc.status,
           payment_method: doc.payment_method,
           payout_reference: doc.payout_reference,
@@ -166,7 +169,6 @@ export async function ensureSupplierSettlementsForOrder(orderId) {
         },
         $set: {
           supplier_order_id: doc.supplier_order_id,
-          amount: doc.amount,
           updated_at: now
         }
       },
@@ -203,10 +205,57 @@ export async function markSupplierSettlementPaid(id, payload = {}) {
   );
   if (!settlement) return null;
   const method = payload.payment_method || settlement.payout_method || "manual";
+  const isManualPayout = ["manual", "bank_transfer", "swift", "wise", "wise_transfer", "konnect_manual", "flouci_manual", "paymee_manual", "stripe_manual", "paypal_manual"].includes(method);
+  const payoutReference = String(payload.payout_reference || payload.reference || "").trim();
+  // A manual transfer cannot be independently verified by the application,
+  // so it may be recorded only with the bank/Wise transfer reference.
+  if (isManualPayout && !payoutReference) {
+    await settlements.updateOne({ id, status: "processing" }, { $set: { status: "pending", updated_at: new Date() } });
+    throw new Error("A payout reference is required before a manual supplier payment can be marked paid.");
+  }
+  let manualPayment = null;
+  if (isManualPayout) {
+    const hasActualAmount = payload.paid_amount !== undefined && payload.paid_amount !== null && payload.paid_amount !== "";
+    const hasActualCurrency = Boolean(String(payload.paid_currency || "").trim());
+    if (hasActualAmount !== hasActualCurrency) {
+      await settlements.updateOne({ id, status: "processing" }, { $set: { status: "pending", updated_at: new Date() } });
+      throw new Error("Enter both the actual paid amount and currency, or leave both blank when the USD settlement amount was paid exactly.");
+    }
+    if (hasActualAmount) {
+      const actualCurrencyInput = String(payload.paid_currency).trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(actualCurrencyInput) || Number(payload.paid_amount) <= 0) {
+        await settlements.updateOne({ id, status: "processing" }, { $set: { status: "pending", updated_at: new Date() } });
+        throw new Error("Enter a valid actual paid amount and three-letter currency.");
+      }
+      const actualCurrency = normalizeCurrency(actualCurrencyInput);
+      const actualAmount = roundMoney(payload.paid_amount, actualCurrency);
+      const quote = actualCurrency === normalizeCurrency(settlement.currency)
+        ? { amount: actualAmount, rate: 1 }
+        : await getExchangeQuote(actualAmount, actualCurrency, settlement.currency);
+      const amountInSettlementCurrency = roundMoney(quote.amount, settlement.currency);
+      manualPayment = {
+        amount: actualAmount,
+        currency: actualCurrency,
+        amount_in_settlement_currency: amountInSettlementCurrency,
+        exchange_rate: Number(quote.rate || (amountInSettlementCurrency / actualAmount) || 0),
+        difference: roundMoney(amountInSettlementCurrency - Number(settlement.amount || 0), settlement.currency)
+      };
+    } else {
+      // No extra input means the admin confirms the exact, locked settlement
+      // amount in its settlement currency (USD by default).
+      manualPayment = {
+        amount: Number(settlement.amount || 0),
+        currency: normalizeCurrency(settlement.currency),
+        amount_in_settlement_currency: Number(settlement.amount || 0),
+        exchange_rate: 1,
+        difference: 0
+      };
+    }
+  }
   const idempotencyKey = `supplier-settlement:${settlement.id}`;
   await payoutTransactions.updateOne(
     { settlement_id: settlement.id, idempotency_key: idempotencyKey },
-    { $setOnInsert: { id: createId(), settlement_id: settlement.id, supplier_id: settlement.supplier_id, order_id: settlement.order_id, amount: settlement.amount, currency: settlement.currency, method, idempotency_key: idempotencyKey, status: "processing", created_at: new Date() }, $set: { updated_at: new Date() } },
+    { $setOnInsert: { id: createId(), settlement_id: settlement.id, supplier_id: settlement.supplier_id, order_id: settlement.order_id, amount: settlement.amount, currency: settlement.currency, method, idempotency_key: idempotencyKey, status: "processing", created_at: new Date() }, $set: { ...(manualPayment ? { actual_paid_amount: manualPayment.amount, actual_paid_currency: manualPayment.currency, actual_paid_amount_in_settlement_currency: manualPayment.amount_in_settlement_currency, actual_paid_exchange_rate: manualPayment.exchange_rate, actual_paid_difference: manualPayment.difference } : {}), updated_at: new Date() } },
     { upsert: true }
   );
   let payout;
@@ -222,19 +271,57 @@ export async function markSupplierSettlementPaid(id, payload = {}) {
     payment_method: payout.method,
     payout_reference: payout.reference,
     payout_notes: payload.notes || "",
+    ...(manualPayment ? {
+      actual_paid_amount: manualPayment.amount,
+      actual_paid_currency: manualPayment.currency,
+      actual_paid_amount_in_settlement_currency: manualPayment.amount_in_settlement_currency,
+      actual_paid_exchange_rate: manualPayment.exchange_rate,
+      actual_paid_difference: manualPayment.difference
+    } : {}),
     paid_at: payout.status === "paid" ? new Date() : null,
     updated_at: new Date()
   };
   await settlements.updateOne({ id }, { $set: update });
   await payoutTransactions.updateOne(
     { settlement_id: settlement.id, idempotency_key: idempotencyKey },
-    { $set: { status: payout.status, provider_reference: payout.reference || "", payout_fee: Number(payload.payout_fee || 0), payout_fee_currency: payload.payout_fee_currency || settlement.currency, paid_at: payout.status === "paid" ? new Date() : null, updated_at: new Date() } }
+    { $set: { status: payout.status, provider_reference: payout.reference || "", payout_fee: Number(payload.payout_fee || 0), payout_fee_currency: payload.payout_fee_currency || settlement.currency, ...(manualPayment ? { actual_paid_amount: manualPayment.amount, actual_paid_currency: manualPayment.currency, actual_paid_amount_in_settlement_currency: manualPayment.amount_in_settlement_currency, actual_paid_exchange_rate: manualPayment.exchange_rate, actual_paid_difference: manualPayment.difference } : {}), paid_at: payout.status === "paid" ? new Date() : null, updated_at: new Date() } }
   );
   const updated = await settlements.findOne({ id }, { projection: { _id: 0 } });
   if (updated && (updated.status === "paid" || updated.status === "processing")) {
     notifySupplierSettlementPaid(updated).catch((err) => console.error("[notification:settlement-paid]", err.message));
   }
   return updated;
+}
+
+// Only providers with a verified server-side payout API may be paid without an
+// admin action. Local checkout gateways intentionally do not appear here:
+// their published integrations accept customer payments for the merchant and
+// are not supplier-disbursement APIs.
+export async function processAutomaticSupplierPayoutsForOrder(orderId) {
+  const settlements = await getCollection("supplier_settlements");
+  const pending = await settlements
+    .find({
+      order_id: orderId,
+      status: "pending",
+      payout_method: { $in: ["stripe_connect", "paypal_payout"] }
+    })
+    .project({ _id: 0, id: 1, payout_method: 1 })
+    .toArray();
+
+  const results = [];
+  for (const settlement of pending) {
+    try {
+      const updated = await markSupplierSettlementPaid(settlement.id, {
+        payment_method: settlement.payout_method
+      });
+      results.push({ settlement_id: settlement.id, status: updated?.status || "pending" });
+    } catch (error) {
+      // Keep the settlement pending: the admin can retry it after resolving
+      // account, balance, or provider-capability issues.
+      results.push({ settlement_id: settlement.id, status: "pending", error: error.message });
+    }
+  }
+  return results;
 }
 
 export async function summarizeSupplierSettlements() {

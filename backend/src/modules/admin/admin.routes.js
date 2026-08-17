@@ -107,9 +107,13 @@ const fulfillmentUpdateSchema = z.object({
 });
 
 const settlementPayoutSchema = z.object({
-  payment_method: z.enum(["manual", "bank_transfer", "swift", "wise", "wise_transfer", "stripe_connect", "paypal_payout", "airwallex", "payoneer_payout"]).optional(),
+  payment_method: z.enum(["manual", "bank_transfer", "swift", "wise", "wise_transfer", "konnect_manual", "flouci_manual", "paymee_manual", "stripe_manual", "paypal_manual", "stripe_connect", "paypal_payout", "airwallex", "payoneer_payout"]).optional(),
   payout_reference: z.string().trim().max(180).optional(),
   notes: z.string().trim().max(1000).optional(),
+  // Manual settlements normally use the locked USD amount. These two fields
+  // are only supplied when the admin actually paid in another currency.
+  paid_amount: z.coerce.number().positive().optional(),
+  paid_currency: z.string().trim().length(3).optional(),
   payout_fee: z.coerce.number().min(0).optional(),
   payout_fee_currency: z.string().trim().length(3).optional()
 });

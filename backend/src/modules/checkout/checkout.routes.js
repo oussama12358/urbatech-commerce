@@ -4,6 +4,7 @@ import { env } from "../../config/env.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { createId, getCollection } from "../../db/mongo.js";
 import { dispatchSupplierOrder } from "../suppliers/supplier.service.js";
+import { processAutomaticSupplierPayoutsForOrder } from "../settlements/settlement.service.js";
 import { getOrderById } from "../orders/orders.routes.js";
 import { notifyCustomerPaymentReceived } from "../notifications/notification.service.js";
 import {
@@ -68,6 +69,14 @@ async function completePaidOrder(order, providerKey, providerPaymentId, fields =
   await dispatchSupplierOrder(order.id).catch(async (err) => {
     await orders.updateOne({ id: order.id }, { $set: { supplier_dispatch_error: err.message } });
   });
+  const payoutResults = await processAutomaticSupplierPayoutsForOrder(order.id);
+  const payoutFailures = payoutResults.filter((result) => result.error);
+  if (payoutFailures.length) {
+    await orders.updateOne(
+      { id: order.id },
+      { $set: { supplier_payout_error: payoutFailures.map((result) => result.error).join(" | ") } }
+    );
+  }
 }
 
 function getPayPalBase(mode) {
@@ -524,10 +533,9 @@ checkoutRouter.post("/paypal/webhook", async (req, res, next) => {
           if (order.payment_status === "paid") {
             // already processed
           } else if (eventType === "PAYMENT.CAPTURE.COMPLETED") {
-            await orders.updateOne({ id: order.id }, { $set: { status: "Paid", payment_status: "paid", paypal_capture_id: getPayPalCaptureId(event), paid_at: new Date() } });
-            notifyCustomerPaymentReceived(order.id).catch((err) => console.error("[notification:payment-received]", err.message));
-            await dispatchSupplierOrder(order.id).catch(async (err) => {
-              await orders.updateOne({ id: order.id }, { $set: { supplier_dispatch_error: err.message } });
+            await completePaidOrder(order, "paypal", getPayPalCaptureId(event), {
+              paypal_order_id: paypalOrderId,
+              paypal_capture_id: getPayPalCaptureId(event)
             });
           } else if (eventType === "PAYMENT.CAPTURE.DENIED") {
             await orders.updateOne({ id: order.id }, { $set: { payment_status: "denied", status: "Payment denied" } });

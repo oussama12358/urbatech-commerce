@@ -109,16 +109,18 @@ function supplierRows(items = []) {
   const itemRows = items
     .map((item) => `
       <tr>
-        <td style="padding:8px;border-bottom:1px solid #edf1f7">${escapeHtml(item.name || item.product_id)}</td>
-        <td style="padding:8px;border-bottom:1px solid #edf1f7;text-align:center">${Number(item.quantity || item.qty || 0)}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #edf1f7;color:#2d3748">${escapeHtml(item.name || item.product_id)}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #edf1f7;text-align:center;color:#2d3748">${Number(item.quantity || item.qty || 0)}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #edf1f7;text-align:right;color:#2d3748;font-family:monospace;font-size:12px">${escapeHtml(item.supplier_product_id || item.product_id || '—')}</td>
       </tr>`)
     .join("");
   return `
-    <table style="width:100%;border-collapse:collapse;margin:18px 0;font-size:14px">
+    <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px">
       <thead>
-        <tr>
-          <th style="padding:8px;text-align:left;border-bottom:2px solid #dbe3ef">Product</th>
-          <th style="padding:8px;text-align:center;border-bottom:2px solid #dbe3ef">Qty</th>
+        <tr style="background:#f7fafc">
+          <th style="padding:10px 8px;text-align:left;border-bottom:2px solid #cbd5e0;color:#4a5568;font-weight:bold">Product Name</th>
+          <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #cbd5e0;color:#4a5568;font-weight:bold">Qty</th>
+          <th style="padding:10px 8px;text-align:right;border-bottom:2px solid #cbd5e0;color:#4a5568;font-weight:bold">Product ID</th>
         </tr>
       </thead>
       <tbody>${itemRows}</tbody>
@@ -307,33 +309,60 @@ export async function notifySupplierNewOrder(orderId, supplierId, dispatch = {})
   const supplierItems = order.items.filter((item) => item.supplier_id === supplierId);
   const currency = order.currency || "USD";
   const customer = order.billing || {};
+  const orderDate = order.created_at ? new Date(order.created_at).toLocaleDateString() : "N/A";
   return sendNotificationEmail({
     to: supplierEmail(supplier),
-    subject: `New supplier order ${dispatch.supplier_order_id || order.id}`,
+    subject: `New Supplier Order: ${dispatch.supplier_order_id || order.id}`,
     type: "supplier_new_order",
     entity: { order_id: order.id, supplier_id: supplierId, supplier_order_id: dispatch.supplier_order_id || null },
     dedupeKey: `supplier_new_order:${order.id}:${supplierId}`,
     html: layout(
-      "New supplier order",
+      "New Supplier Order",
       `
-        <p>A new URBA TECH order is ready for fulfillment.</p>
-        <p>
-          <strong>Order:</strong> ${escapeHtml(order.id)}<br>
-          <strong>Supplier order:</strong> ${escapeHtml(dispatch.supplier_order_id || "-")}<br>
-          <strong>Customer:</strong> ${escapeHtml(orderCustomerName(order))}<br>
-          <strong>Email:</strong> ${escapeHtml(customer.customerEmail || customer.email || "-")}<br>
-          <strong>Phone:</strong> ${escapeHtml(customer.phone || "-")}<br>
-          <strong>Address:</strong> ${escapeHtml(customer.address || customer.shippingAddress || "-")}<br>
-          <strong>Apartment / address line 2:</strong> ${escapeHtml(customer.apartment || customer.address2 || "-")}<br>
-          <strong>City:</strong> ${escapeHtml(customer.city || "-")}<br>
-          <strong>Postal code:</strong> ${escapeHtml(customer.postalCode || customer.postal_code || customer.zip || "-")}<br>
-          <strong>Country:</strong> ${escapeHtml(customer.country || "-")}<br>
-          <strong>Delivery notes:</strong> ${escapeHtml(customer.notes || "-")}
-        </p>
+        <p style="font-size:14px;color:#2d3748">Dear Supplier Partner,</p>
+        <p style="font-size:14px;color:#2d3748">A new fulfillment order has arrived and is ready for processing. Please review the details below and confirm receipt.</p>
+        
+        <div style="background:#f7fafc;border-left:4px solid #f5a800;padding:16px;margin:20px 0;border-radius:4px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px">
+            <div>
+              <p style="margin:0 0 4px;color:#718096;font-weight:bold">ORDER REFERENCE</p>
+              <p style="margin:0;font-size:16px;color:#172033;font-weight:bold">${escapeHtml(order.id)}</p>
+            </div>
+            <div>
+              <p style="margin:0 0 4px;color:#718096;font-weight:bold">YOUR SUPPLIER ORDER ID</p>
+              <p style="margin:0;font-size:16px;color:#172033;font-weight:bold">${escapeHtml(dispatch.supplier_order_id || "—")}</p>
+            </div>
+            <div>
+              <p style="margin:0 0 4px;color:#718096;font-weight:bold">ORDER DATE</p>
+              <p style="margin:0;color:#172033">${escapeHtml(orderDate)}</p>
+            </div>
+            <div>
+              <p style="margin:0 0 4px;color:#718096;font-weight:bold">TOTAL PAYABLE</p>
+              <p style="margin:0;color:#172033;font-weight:bold">${money(dispatch.supplier_payable, currency)}</p>
+            </div>
+          </div>
+        </div>
+
+        <h3 style="font-size:14px;font-weight:bold;color:#172033;margin:20px 0 12px;text-transform:uppercase;letter-spacing:0.5px">PRODUCTS TO FULFILL</h3>
         ${supplierRows(supplierItems)}
-        <p>
-          <strong>Supplier payable:</strong> ${money(dispatch.supplier_payable, currency)}
-        </p>
+
+        <h3 style="font-size:14px;font-weight:bold;color:#172033;margin:20px 0 12px;text-transform:uppercase;letter-spacing:0.5px">SHIPPING DETAILS</h3>
+        <div style="background:#f7fafc;padding:16px;border-radius:4px;font-size:13px;line-height:1.6;color:#2d3748">
+          <p style="margin:0 0 8px">
+            <strong>${escapeHtml(orderCustomerName(order))}</strong><br>
+            ${customer.address || customer.shippingAddress ? escapeHtml(customer.address || customer.shippingAddress) + '<br>' : ''}
+            ${customer.apartment || customer.address2 ? escapeHtml(customer.apartment || customer.address2) + '<br>' : ''}
+            ${customer.city ? escapeHtml(customer.city) : ''} ${customer.postalCode || customer.postal_code || customer.zip ? escapeHtml(customer.postalCode || customer.postal_code || customer.zip) : ''}<br>
+            ${customer.country ? escapeHtml(customer.country) : ''}
+          </p>
+          ${customer.phone ? `<p style="margin:8px 0">Phone: ${escapeHtml(customer.phone)}</p>` : ''}
+          ${customer.customerEmail || customer.email ? `<p style="margin:8px 0">Email: ${escapeHtml(customer.customerEmail || customer.email)}</p>` : ''}
+          ${customer.notes ? `<p style="margin:12px 0 0;padding:8px;background:#fff;border-left:2px solid #cbd5e0"><strong>Delivery Notes:</strong> ${escapeHtml(customer.notes)}</p>` : ''}
+        </div>
+
+        <div style="margin:24px 0;padding:12px;background:#edf2f7;border-radius:4px;font-size:12px;color:#4a5568">
+          <p style="margin:0"><strong>Important:</strong> This order contains only your supplier items. Prices shown are your payable amounts as agreed. Confirm receipt and provide tracking information once shipped.</p>
+        </div>
       `
     )
   });
@@ -344,23 +373,60 @@ export async function notifySupplierSettlementPaid(settlement) {
   const supplier = await suppliers.findOne({ id: settlement.supplier_id });
   if (!supplier) return null;
   const currency = settlement.currency || "USD";
+  const settlementDate = settlement.created_at ? new Date(settlement.created_at).toLocaleDateString() : "N/A";
+  const statusText = settlement.status === "paid" ? "PAYMENT CONFIRMED" : settlement.status === "pending" ? "PENDING" : settlement.status.toUpperCase();
   return sendNotificationEmail({
     to: supplierEmail(supplier),
-    subject: `Settlement paid: ${settlement.id}`,
+    subject: `Settlement ${statusText}: ${settlement.id}`,
     type: "supplier_settlement_paid",
     entity: { settlement_id: settlement.id, supplier_id: settlement.supplier_id, order_id: settlement.order_id },
     dedupeKey: `supplier_settlement_paid:${settlement.id}:${settlement.status}`,
     html: layout(
-      "Settlement paid",
+      "Settlement Payment Notification",
       `
-        <p>Your URBA TECH supplier settlement has been marked as ${escapeHtml(settlement.status)}.</p>
-        <p>
-          <strong>Settlement:</strong> ${escapeHtml(settlement.id)}<br>
-          <strong>Order:</strong> ${escapeHtml(settlement.order_id || "-")}<br>
-          <strong>Amount:</strong> ${money(settlement.amount, currency)}<br>
-          <strong>Method:</strong> ${escapeHtml(settlement.payment_method || "-")}<br>
-          <strong>Reference:</strong> ${escapeHtml(settlement.payout_reference || "-")}
-        </p>
+        <p style="font-size:14px;color:#2d3748">Dear Supplier Partner,</p>
+        <p style="font-size:14px;color:#2d3748">Your settlement payment has been processed. Please see the details below for your records.</p>
+        
+        <div style="background:${settlement.status === 'paid' ? '#c6f6d5' : '#bee3f8'};border-left:4px solid ${settlement.status === 'paid' ? '#48bb78' : '#3182ce'};padding:16px;margin:20px 0;border-radius:4px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px">
+            <div>
+              <p style="margin:0 0 4px;color:#22543d;font-weight:bold;opacity:0.7">SETTLEMENT ID</p>
+              <p style="margin:0;font-size:15px;color:#1a202c;font-weight:bold">${escapeHtml(settlement.id)}</p>
+            </div>
+            <div>
+              <p style="margin:0 0 4px;color:#22543d;font-weight:bold;opacity:0.7">RELATED ORDER</p>
+              <p style="margin:0;font-size:15px;color:#1a202c;font-weight:bold">${escapeHtml(settlement.order_id || "—")}</p>
+            </div>
+            <div>
+              <p style="margin:0 0 4px;color:#22543d;font-weight:bold;opacity:0.7">AMOUNT</p>
+              <p style="margin:0;font-size:15px;color:#1a202c;font-weight:bold">${money(settlement.amount, currency)}</p>
+            </div>
+            <div>
+              <p style="margin:0 0 4px;color:#22543d;font-weight:bold;opacity:0.7">STATUS</p>
+              <p style="margin:0;font-size:15px;color:#1a202c;font-weight:bold">${escapeHtml(statusText)}</p>
+            </div>
+            <div>
+              <p style="margin:0 0 4px;color:#22543d;font-weight:bold;opacity:0.7">PAYMENT METHOD</p>
+              <p style="margin:0;font-size:13px;color:#1a202c">${settlement.payment_method ? escapeHtml(settlement.payment_method.replace(/_/g, ' ').toUpperCase()) : "—"}</p>
+            </div>
+            <div>
+              <p style="margin:0 0 4px;color:#22543d;font-weight:bold;opacity:0.7">DATE</p>
+              <p style="margin:0;font-size:13px;color:#1a202c">${escapeHtml(settlementDate)}</p>
+            </div>
+          </div>
+        </div>
+
+        ${settlement.payout_reference ? `
+        <div style="background:#edf2f7;padding:14px;border-radius:4px;margin:16px 0;font-size:13px">
+          <p style="margin:0 0 8px;color:#4a5568"><strong>TRANSACTION REFERENCE</strong></p>
+          <p style="margin:0;font-family:monospace;color:#2d3748;word-break:break-all;background:#fff;padding:8px;border-radius:2px;border-left:2px solid #cbd5e0">${escapeHtml(settlement.payout_reference)}</p>
+          <p style="margin:8px 0 0;font-size:12px;color:#718096">Keep this reference for your banking records.</p>
+        </div>
+        ` : ''}
+
+        <div style="margin:20px 0;padding:14px;background:#faf5ff;border-left:2px solid #d69e2e;border-radius:4px;font-size:12px;color:#5a4a42">
+          <p style="margin:0"><strong>Note:</strong> For your records, this settlement may take 1-3 business days to appear in your account depending on your payment method.</p>
+        </div>
       `
     )
   });
@@ -395,4 +461,62 @@ export async function notifyAdminLowStock(product) {
     entity: { product_id: product.id, name: product.name, stock, threshold: env.lowStockThreshold, supplier_id: product.supplier_id || null },
     dedupeKey: `admin_low_stock:${product.id}:${stock}`
   });
+}
+
+export async function notifySupplierOrderExpired(orderId) {
+  const order = await loadOrderWithItems(orderId);
+  if (!order) return null;
+  
+  // Notify suppliers of expired reserved orders
+  const suppliers = await getCollection("suppliers");
+  const supplierIds = new Set(order.items.map((item) => item.supplier_id).filter(Boolean));
+  
+  const results = [];
+  for (const supplierId of supplierIds) {
+    const supplier = await suppliers.findOne({ id: supplierId });
+    if (!supplier) continue;
+    
+    const supplierItems = order.items.filter((item) => item.supplier_id === supplierId);
+    if (!supplierItems.length) continue;
+    
+    const result = await sendNotificationEmail({
+      to: supplierEmail(supplier),
+      subject: `Reserved Order Expired: ${order.id}`,
+      type: "supplier_order_expired",
+      entity: { order_id: order.id, supplier_id: supplierId },
+      dedupeKey: `supplier_order_expired:${order.id}:${supplierId}`,
+      html: layout(
+        "Reserved Order Expired",
+        `
+          <p style="font-size:14px;color:#2d3748">Dear Supplier Partner,</p>
+          <p style="font-size:14px;color:#2d3748">A reserved order that was held for your supplier has expired and the stock reservation has been released.</p>
+          
+          <div style="background:#fed7d7;border-left:4px solid #fc8181;padding:16px;margin:20px 0;border-radius:4px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px">
+              <div>
+                <p style="margin:0 0 4px;color:#742a2a;font-weight:bold;opacity:0.7">ORDER REFERENCE</p>
+                <p style="margin:0;font-size:15px;color:#1a202c;font-weight:bold">${escapeHtml(order.id)}</p>
+              </div>
+              <div>
+                <p style="margin:0 0 4px;color:#742a2a;font-weight:bold;opacity:0.7">EXPIRY STATUS</p>
+                <p style="margin:0;font-size:15px;color:#1a202c;font-weight:bold">EXPIRED - STOCK RELEASED</p>
+              </div>
+            </div>
+          </div>
+
+          <h3 style="font-size:14px;font-weight:bold;color:#172033;margin:20px 0 12px;text-transform:uppercase;letter-spacing:0.5px">PRODUCTS RESERVED (NOW RELEASED)</h3>
+          ${supplierRows(supplierItems)}
+
+          <div style="margin:20px 0;padding:14px;background:#fef5e7;border-left:2px solid #d69e2e;border-radius:4px;font-size:12px;color:#5a4a42">
+            <p style="margin:0 0 8px"><strong>Why this happened:</strong> The customer did not complete payment within the reservation period (60 minutes).</p>
+            <p style="margin:0"><strong>What's next:</strong> The reserved stock for these products has been returned to your inventory and is now available for other orders.</p>
+          </div>
+        `
+      )
+    });
+    
+    results.push({ supplier_id: supplierId, success: result.success });
+  }
+  
+  return { order_id: orderId, notifications: results };
 }

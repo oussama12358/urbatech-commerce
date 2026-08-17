@@ -201,6 +201,7 @@ export function publicSupplier(supplier) {
     order_status_mapping: supplier.order_status_mapping || {},
     webhook_mapping: supplier.webhook_mapping || {},
     payout_method: supplier.payout_method || "manual",
+    payout_currency: supplier.payout_currency || "USD",
     payout_email: supplier.payout_email || "",
     paypal_email: supplier.paypal_email || "",
     stripe_account_id: supplier.stripe_account_id || "",

@@ -462,8 +462,28 @@ export function StoreProvider({ children }) {
       setSuppliers([]);
       return undefined;
     }
-    refreshSuppliers().catch(() => {});
-    return undefined;
+    // The first request can race with a backend/dev-server restart or session
+    // restoration. Retry quietly so the admin never needs to refresh the page
+    // just to make suppliers appear.
+    let mounted = true;
+    let retryTimer = null;
+    let attempts = 0;
+    const loadSuppliers = async () => {
+      try {
+        const api = createApiClient(user.token);
+        const json = await api("/suppliers");
+        if (mounted) setSuppliers(json?.data || []);
+      } catch (error) {
+        if (!mounted || attempts >= 8) return;
+        attempts += 1;
+        retryTimer = setTimeout(loadSuppliers, Math.min(1000 * attempts, 4000));
+      }
+    };
+    loadSuppliers();
+    return () => {
+      mounted = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [user?.token, user?.role]);
 
   useEffect(() => {

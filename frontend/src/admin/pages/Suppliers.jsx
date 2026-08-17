@@ -35,6 +35,8 @@ export default function Suppliers() {
   const [manualShipsTo, setManualShipsTo] = useState("");
   const [detailsShipsTo, setDetailsShipsTo] = useState("");
   const [detailsShipsBusy, setDetailsShipsBusy] = useState(false);
+  const [payoutSettings, setPayoutSettings] = useState({ method: "manual", currency: "USD", stripeAccountId: "", paypalEmail: "" });
+  const [payoutSettingsBusy, setPayoutSettingsBusy] = useState(false);
   const formRef = useRef(null);
 
   useEffect(() => {
@@ -211,12 +213,65 @@ export default function Suppliers() {
   const openSupplierDetails = (supplier) => {
     setDetailsSupplier(supplier);
     setDetailsShipsTo((supplier.ships_to_countries || []).join(", "));
+    setPayoutSettings({
+      method: supplier.payout_method || "manual",
+      currency: supplier.payout_currency || "USD",
+      stripeAccountId: supplier.stripe_account_id || "",
+      paypalEmail: supplier.paypal_email || supplier.payout_email || ""
+    });
   };
 
   const closeSupplierDetails = () => {
     setDetailsSupplier(null);
     setDetailsShipsTo("");
     setDetailsShipsBusy(false);
+    setPayoutSettings({ method: "manual", currency: "USD", stripeAccountId: "", paypalEmail: "" });
+    setPayoutSettingsBusy(false);
+  };
+
+  const savePayoutSettings = async () => {
+    if (!detailsSupplier) return;
+    const method = payoutSettings.method || "manual";
+    const automaticPayout = method === "stripe_connect" || method === "paypal_payout";
+    // Manual settlements are recorded in the platform settlement currency.
+    // A different real-world payment currency is entered only when recording
+    // that individual settlement, not in the supplier setup.
+    const currency = automaticPayout ? String(payoutSettings.currency || "USD").trim().toUpperCase() : "USD";
+    const stripeAccountId = String(payoutSettings.stripeAccountId || "").trim();
+    const paypalEmail = String(payoutSettings.paypalEmail || "").trim();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      setError(t("invalidPayoutCurrency"));
+      return;
+    }
+    if (method === "stripe_connect" && !stripeAccountId) {
+      setError(t("stripeConnectedAccountRequired"));
+      return;
+    }
+    if (method === "paypal_payout" && !paypalEmail) {
+      setError(t("paypalRecipientRequired"));
+      return;
+    }
+    setPayoutSettingsBusy(true);
+    setError("");
+    try {
+      const updated = await runAction(detailsSupplier.id, (id) =>
+        updateSupplier(id, {
+          payout_method: method,
+          payout_currency: currency,
+          stripe_account_id: stripeAccountId,
+          paypal_email: paypalEmail,
+          payout_email: paypalEmail
+        })
+      );
+      if (updated) {
+        setDetailsSupplier(updated);
+        setPayoutSettings({ method: updated.payout_method || method, currency: updated.payout_currency || currency, stripeAccountId: updated.stripe_account_id || "", paypalEmail: updated.paypal_email || updated.payout_email || "" });
+      }
+    } catch (err) {
+      setError(getFriendlyError(err) || t("supplierActionFailed"));
+    } finally {
+      setPayoutSettingsBusy(false);
+    }
   };
 
   const saveDetailsShipsTo = async () => {
@@ -882,6 +937,67 @@ export default function Suppliers() {
                     {detailsShipsBusy ? t("savingSupplier") : t("saveShipsToCountries")}
                   </button>
                 </div>
+              </div>
+
+              <div style={{ gridColumn: "1 / -1", marginTop: 8 }}>
+                <strong>{t("supplierPayoutSetup")}</strong>
+                <p className="field-hint" style={{ marginTop: 6 }}>{t("supplierPayoutSetupHint")}</p>
+                <div className="form-grid three" style={{ marginTop: 10 }}>
+                  <label className="field-group">
+                    <span>{t("payoutMethod")}</span>
+                    <select
+                      className="select"
+                      value={payoutSettings.method}
+                      onChange={(event) => setPayoutSettings((current) => ({ ...current, method: event.target.value }))}
+                    >
+                      <option value="manual">{t("manualPayout")}</option>
+                      <option value="konnect_manual">Konnect ({t("manualPayout")})</option>
+                      <option value="flouci_manual">Flouci ({t("manualPayout")})</option>
+                      <option value="paymee_manual">Paymee ({t("manualPayout")})</option>
+                      <option value="stripe_manual">Stripe ({t("manualPayout")})</option>
+                      <option value="paypal_manual">PayPal ({t("manualPayout")})</option>
+                      <option value="stripe_connect">Stripe Connect</option>
+                      <option value="paypal_payout">PayPal Payouts</option>
+                    </select>
+                  </label>
+                  {(payoutSettings.method === "stripe_connect" || payoutSettings.method === "paypal_payout") && (
+                    <label className="field-group">
+                      <span>{t("payoutCurrency")}</span>
+                      <input
+                        className="input"
+                        value={payoutSettings.currency}
+                        maxLength={3}
+                        onChange={(event) => setPayoutSettings((current) => ({ ...current, currency: event.target.value.toUpperCase() }))}
+                        placeholder="USD"
+                      />
+                    </label>
+                  )}
+                  {payoutSettings.method === "stripe_connect" ? (
+                    <label className="field-group">
+                      <span>{t("stripeConnectedAccountId")}</span>
+                      <input
+                        className="input"
+                        value={payoutSettings.stripeAccountId}
+                        onChange={(event) => setPayoutSettings((current) => ({ ...current, stripeAccountId: event.target.value }))}
+                        placeholder="acct_..."
+                      />
+                    </label>
+                  ) : payoutSettings.method === "paypal_payout" ? (
+                    <label className="field-group">
+                      <span>{t("paypalRecipientEmail")}</span>
+                      <input
+                        className="input"
+                        type="email"
+                        value={payoutSettings.paypalEmail}
+                        onChange={(event) => setPayoutSettings((current) => ({ ...current, paypalEmail: event.target.value }))}
+                        placeholder="supplier@example.com"
+                      />
+                    </label>
+                  ) : null}
+                </div>
+                <button className="secondary-btn" type="button" disabled={payoutSettingsBusy} onClick={savePayoutSettings}>
+                  {payoutSettingsBusy ? t("savingSupplier") : t("savePayoutSettings")}
+                </button>
               </div>
 
               {!isManualSupplierRecord(detailsSupplier) && (

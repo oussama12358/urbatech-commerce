@@ -1,5 +1,5 @@
 import { getCollection } from "../../db/mongo.js";
-import { notifyAdminLowStock } from "../notifications/notification.service.js";
+import { notifyAdminLowStock, notifySupplierOrderExpired } from "../notifications/notification.service.js";
 
 export async function reserveStockForItems(items, orderId) {
   const products = await getCollection("products");
@@ -89,6 +89,12 @@ export async function releaseExpiredStockReservations({ olderThanMinutes = 60, l
         }
       }
     );
+    
+    // Notify suppliers about the expired order
+    await notifySupplierOrderExpired(order.id).catch((err) => {
+      console.error(`[notification:supplier-order-expired:${order.id}]`, err.message || err);
+    });
+    
     released.push(order.id);
   }
 
