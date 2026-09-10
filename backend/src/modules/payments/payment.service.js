@@ -50,7 +50,11 @@ function serializeProvider(provider, { includeConfig = false } = {}) {
   const configuredCountries = provider.config?.supportedCountries || provider.config?.supported_countries || [];
   const entry = catalogEntry(provider.provider_key);
   return {
-    id: provider.id, provider_key: provider.provider_key, name: provider.name, description: provider.description || "",
+    id: provider.id, provider_key: provider.provider_key,
+    // Stripe is an implementation detail: customers buy with Card, while
+    // administrators still see the provider's real integration name.
+    name: !includeConfig && provider.provider_key === "stripe" ? "Card" : provider.name,
+    description: provider.description || "",
     integration: provider.integration || entry?.integration || "external", enabled: Boolean(provider.enabled), merchant_eligible: Boolean(provider.merchant_eligible),
     supported_currencies: Array.isArray(configuredCurrencies) ? configuredCurrencies.map((value) => String(value).toUpperCase()) : [],
     supported_countries: Array.isArray(configuredCountries) ? configuredCountries.map((value) => String(value).toUpperCase()) : [],

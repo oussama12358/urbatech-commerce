@@ -29,13 +29,19 @@ export default function OrdersPage() {
             <tbody>
               {orders.map((order) => (
                 <tr key={order.id}>
+                  {(() => {
+                    const shipments = Array.isArray(order.shipments) ? order.shipments : [];
+                    const singleShipment = shipments.length === 1 ? shipments[0] : null;
+                    return <>
                   <td><Link className="link-button" to={`/orders/${order.id}`}>{order.id}</Link></td>
                   <td>{order.date || (order.created_at ? new Date(order.created_at).toLocaleDateString() : "-")}</td>
                   <td>{translateOrderStatus(order.status)}</td>
-                  <td>{order.carrier || "-"}</td>
-                  <td>{order.tracking || "-"}</td>
+                  <td>{shipments.length > 1 ? `${shipments.length} ${t("shipments")}` : singleShipment?.carrier || order.carrier || "-"}</td>
+                  <td>{shipments.length > 1 ? t("orderDetailsTitle") : singleShipment?.tracking || order.tracking || "-"}</td>
                   <td>{order.items.map((item) => item.name).join(", ")}</td>
                   <td>{money(order.total, order.currency || "USD")}</td>
+                    </>;
+                  })()}
                 </tr>
               ))}
             </tbody>

@@ -346,7 +346,7 @@ function PhoneInput({ phoneCode, phoneFormat, onCodeChange, name }) {
 export default function CheckoutPage() {
   const navigate = useNavigate();
   useLocale();
-  const { user, cartLines, totals, clearCart, createOrder, createCheckoutSession, paymentProviders, updateProfile, currency, currencies, setAutomaticCurrencyForCountry } = useStore();
+  const { user, cartLines, totals, clearCart, createOrder, createCheckoutSession, paymentProviders, updateProfile, orderCurrency } = useStore();
 
   const [paymentMethod, setPaymentMethod] = useState("");
   const [selectedCountry, setSelectedCountry] = useState(() => {
@@ -370,10 +370,7 @@ export default function CheckoutPage() {
 
   const handleCountryChange = useCallback((nextCountry) => {
     setSelectedCountry(nextCountry);
-    if (nextCountry?.code) {
-      setAutomaticCurrencyForCountry(nextCountry.code, { force: true });
-    }
-  }, [setAutomaticCurrencyForCountry]);
+  }, []);
 
   useEffect(() => {
     if (!cartLines.length && !redirectedRef.current) {
@@ -422,12 +419,11 @@ export default function CheckoutPage() {
       if (dial) setPhoneCode(dial);
       if (selectedCountry.phoneFormat) setPhoneFormat(selectedCountry.phoneFormat);
       writeShippingCountryCode(selectedCountry.code);
-      setAutomaticCurrencyForCountry(selectedCountry.code);
     } else {
       setPhoneCode("");
       setPhoneFormat("");
     }
-  }, [selectedCountry, setAutomaticCurrencyForCountry]);
+  }, [selectedCountry]);
 
   useEffect(() => {
     if (user?.token && selectedCountry && selectedCountry.code && user.country_code !== selectedCountry.code) {
@@ -605,8 +601,8 @@ export default function CheckoutPage() {
               <label htmlFor="paymentMethod">{t("paymentMethod")}</label>
               <p className="payment-hint payment-currency-confirmation" role="status">
                 {t("chargedInCurrency")
-                  .replace("{amount}", money(totals.total, currency || "USD"))
-                  .replace("{currency}", currency || "USD")}
+                  .replace("{amount}", money(totals.total, orderCurrency))
+                  .replace("{currency}", orderCurrency)}
               </p>
               {availablePaymentProviders.length ? (
                 <>
@@ -623,8 +619,18 @@ export default function CheckoutPage() {
                       </option>
                     ))}
                   </select>
+                  {paymentMethod === "konnect" ? <p className="payment-hint">Payment in TND, EUR or USD only.</p> : null}
+                  {paymentMethod === "paymee" ? <p className="payment-hint">Payment in TND only.</p> : null}
+                  {paymentMethod === "flouci" ? <p className="payment-hint">Payment in TND only.</p> : null}
                   <p className="payment-hint">{t("redirectToPayment")}</p>
                   <div className="payment-logos">
+                    {paymentMethod === "stripe" ? (
+                      <>
+                        <span className="payment-badge">Visa</span>
+                        <span className="payment-badge">Mastercard</span>
+                        <span className="payment-badge">Discover</span>
+                      </>
+                    ) : null}
                     {availablePaymentProviders.map((provider) => (
                       <span key={provider.provider_key} className="payment-badge">
                         {provider.name}
@@ -646,7 +652,7 @@ export default function CheckoutPage() {
                   type="submit"
                   disabled={!availablePaymentProviders.length || blockedItems.length > 0}
                 >
-                  {t("pay")} {availablePaymentProviders.length ? money(totals.total) : ""}
+                  {t("pay")} {availablePaymentProviders.length ? money(totals.total, orderCurrency) : ""}
                 </button>
                 <span className="pay-lock-badge">{t("totalSecured")}</span>
               </div>

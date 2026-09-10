@@ -287,10 +287,63 @@ export async function markSupplierSettlementPaid(id, payload = {}) {
     { $set: { status: payout.status, provider_reference: payout.reference || "", payout_fee: Number(payload.payout_fee || 0), payout_fee_currency: payload.payout_fee_currency || settlement.currency, ...(manualPayment ? { actual_paid_amount: manualPayment.amount, actual_paid_currency: manualPayment.currency, actual_paid_amount_in_settlement_currency: manualPayment.amount_in_settlement_currency, actual_paid_exchange_rate: manualPayment.exchange_rate, actual_paid_difference: manualPayment.difference } : {}), paid_at: payout.status === "paid" ? new Date() : null, updated_at: new Date() } }
   );
   const updated = await settlements.findOne({ id }, { projection: { _id: 0 } });
-  if (updated && (updated.status === "paid" || updated.status === "processing")) {
+  if (updated?.status === "paid") {
     notifySupplierSettlementPaid(updated).catch((err) => console.error("[notification:settlement-paid]", err.message));
   }
   return updated;
+}
+
+// PayPal accepts a payout batch before it has necessarily delivered the money.
+// Reconcile the batch server-side before recording a supplier settlement as
+// paid. This keeps the payout ledger truthful and never trusts browser input.
+export async function reconcilePayPalSupplierPayout(id) {
+  const settlements = await getCollection("supplier_settlements");
+  const payoutTransactions = await getCollection("supplier_payout_transactions");
+  const settlement = await settlements.findOne({ id, payout_method: "paypal_payout", status: "processing" }, { projection: { _id: 0 } });
+  if (!settlement) return null;
+  if (!settlement.payout_reference) throw new Error("PayPal payout batch reference is missing.");
+
+  const provider = await getPaymentProviderRecordByKey("paypal");
+  const config = {
+    clientId: provider?.config?.clientId || env.paypalClientId,
+    clientSecret: provider?.config?.clientSecret || env.paypalClientSecret,
+    mode: provider?.config?.mode || env.paypalMode || "sandbox"
+  };
+  if (!config.clientId || !config.clientSecret) throw new Error("PayPal Payouts are not configured on the server.");
+  const accessToken = await getPayPalAccessToken(config);
+  const response = await fetch(`${getPayPalBase(config.mode)}/v1/payments/payouts/${encodeURIComponent(settlement.payout_reference)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const payout = await response.json();
+  if (!response.ok) throw new Error(payout.message || `PayPal payout status failed with ${response.status}`);
+  const status = String(payout.batch_header?.batch_status || "").toUpperCase();
+  const now = new Date();
+  const idempotencyKey = `supplier-settlement:${settlement.id}`;
+
+  if (["SUCCESS", "COMPLETED"].includes(status)) {
+    await settlements.updateOne({ id: settlement.id, status: "processing" }, { $set: { status: "paid", paid_at: now, payout_provider_status: status, updated_at: now } });
+    await payoutTransactions.updateOne(
+      { settlement_id: settlement.id, idempotency_key: idempotencyKey },
+      { $set: { status: "paid", provider_status: status, paid_at: now, updated_at: now } }
+    );
+    const updated = await settlements.findOne({ id: settlement.id }, { projection: { _id: 0 } });
+    if (updated) notifySupplierSettlementPaid(updated).catch((err) => console.error("[notification:settlement-paid]", err.message));
+    return updated;
+  }
+
+  if (["DENIED", "FAILED", "CANCELED", "CANCELLED"].includes(status)) {
+    // Keep it retryable, but preserve the provider result in the payout
+    // transaction for an audit trail.
+    await settlements.updateOne({ id: settlement.id, status: "processing" }, { $set: { status: "pending", payout_provider_status: status, payout_failure_reason: payout?.batch_header?.errors?.name || status, updated_at: now } });
+    await payoutTransactions.updateOne(
+      { settlement_id: settlement.id, idempotency_key: idempotencyKey },
+      { $set: { status: "failed", provider_status: status, error: payout?.batch_header?.errors?.name || status, updated_at: now } }
+    );
+    return settlements.findOne({ id: settlement.id }, { projection: { _id: 0 } });
+  }
+
+  await settlements.updateOne({ id: settlement.id }, { $set: { payout_provider_status: status || "PROCESSING", updated_at: now } });
+  return settlements.findOne({ id: settlement.id }, { projection: { _id: 0 } });
 }
 
 // Only providers with a verified server-side payout API may be paid without an

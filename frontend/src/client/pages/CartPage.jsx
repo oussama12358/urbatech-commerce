@@ -16,7 +16,7 @@ import {
 
 export default function CartPage() {
   useLocale();
-  const { cartLines, changeQty, totals, user, updateProfile, setAutomaticCurrencyForCountry } = useStore();
+  const { cartLines, changeQty, totals, user, updateProfile } = useStore();
   const [shipCountryCode, setShipCountryCode] = useState(() => {
     return user?.country_code || readStoredShippingCountryCode();
   });
@@ -49,9 +49,6 @@ export default function CartPage() {
   }, [shipCountryCode, user?.token, user?.country_code, updateProfile]);
 
   const shipCountry = shipCountryCode ? getCountryByCode(shipCountryCode) : null;
-  useEffect(() => {
-    if (shipCountryCode) setAutomaticCurrencyForCountry(shipCountryCode);
-  }, [shipCountryCode, setAutomaticCurrencyForCountry]);
   const unavailableLines = shipCountry
     ? cartLines.filter((line) => isProductAvailableInCountry(line, shipCountry).available === false)
     : [];

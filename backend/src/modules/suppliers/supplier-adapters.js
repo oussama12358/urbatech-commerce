@@ -91,6 +91,14 @@ const defaultOrderMapping = {
 const defaultOrderResponseMapping = {
   supplier_order_id: "supplier_order_id|order_id|id",
   tracking: "tracking|tracking_number|trackingCode",
+  packages: "packages|shipments|parcels",
+  package_id: "id|package_id|packageId|shipment_id|shipmentId|parcel_id|parcelId",
+  package_carrier: "carrier|carrier_name|carrierName|shipping_carrier",
+  package_carrier_code: "carrier_code|carrierCode",
+  package_tracking: "tracking|tracking_number|trackingNumber|trackingCode",
+  package_tracking_url: "tracking_url|trackingUrl|trackingURL",
+  package_status: "status|shipping_status|shippingStatus",
+  package_items: "items|products|lines",
   status: "status",
   invoice_number: "invoice_number|invoiceNumber|invoice.id",
   invoice_url: "invoice_url|invoiceUrl|invoice.url|invoice.pdf_url"
@@ -100,6 +108,14 @@ const defaultOrderStatusMapping = {
   status: "status|order_status",
   tracking: "tracking|tracking_number|trackingCode",
   carrier: "carrier|shipping_carrier",
+  packages: "packages|shipments|parcels",
+  package_id: "id|package_id|packageId|shipment_id|shipmentId|parcel_id|parcelId",
+  package_carrier: "carrier|carrier_name|carrierName|shipping_carrier",
+  package_carrier_code: "carrier_code|carrierCode",
+  package_tracking: "tracking|tracking_number|trackingNumber|trackingCode",
+  package_tracking_url: "tracking_url|trackingUrl|trackingURL",
+  package_status: "status|shipping_status|shippingStatus",
+  package_items: "items|products|lines",
   invoice_number: "invoice_number|invoiceNumber|invoice.id",
   invoice_url: "invoice_url|invoiceUrl|invoice.url|invoice.pdf_url"
 };
@@ -241,14 +257,29 @@ export class SupplierAdapter {
     return payload;
   }
 
+  normalizePackages(rawPackages, mapping) {
+    if (!Array.isArray(rawPackages)) return null;
+    return rawPackages.map((rawPackage) => normalizePackage({
+      id: firstValue(rawPackage, mapping.package_id, null),
+      carrier: firstValue(rawPackage, mapping.package_carrier, null),
+      carrier_code: firstValue(rawPackage, mapping.package_carrier_code, null),
+      tracking: firstValue(rawPackage, mapping.package_tracking, null),
+      tracking_url: firstValue(rawPackage, mapping.package_tracking_url, null),
+      status: firstValue(rawPackage, mapping.package_status, null),
+      items: firstValue(rawPackage, mapping.package_items, null)
+    }));
+  }
+
   async createOrder(orderPayload) {
     const json = await this.request(this.endpoints.orders, {
       method: "POST",
       body: JSON.stringify(this.buildSupplierOrderPayload(orderPayload))
     });
+    const rawPackages = firstValue(json, this.orderResponseMapping.packages, null);
     return {
       supplier_order_id: firstValue(json, this.orderResponseMapping.supplier_order_id, null),
       tracking: firstValue(json, this.orderResponseMapping.tracking, null),
+      ...(Array.isArray(rawPackages) ? { packages: this.normalizePackages(rawPackages, this.orderResponseMapping) } : {}),
       status: firstValue(json, this.orderResponseMapping.status, "processing"),
       invoice_number: firstValue(json, this.orderResponseMapping.invoice_number, null),
       invoice_url: firstValue(json, this.orderResponseMapping.invoice_url, null)
@@ -258,10 +289,12 @@ export class SupplierAdapter {
   async getOrderStatus(supplierOrderId) {
     const path = this.endpoints.order_status.replace(":id", encodeURIComponent(supplierOrderId));
     const json = await this.request(path);
+    const rawPackages = firstValue(json, this.orderStatusMapping.packages, null);
     return {
       status: firstValue(json, this.orderStatusMapping.status, null),
       tracking: firstValue(json, this.orderStatusMapping.tracking, null),
       carrier: firstValue(json, this.orderStatusMapping.carrier, null),
+      ...(Array.isArray(rawPackages) ? { packages: this.normalizePackages(rawPackages, this.orderStatusMapping) } : {}),
       invoice_number: firstValue(json, this.orderStatusMapping.invoice_number, null),
       invoice_url: firstValue(json, this.orderStatusMapping.invoice_url, null)
     };
@@ -288,3 +321,4 @@ export function getSupplierAdapter(supplier) {
   if (adapter === "cj" || adapter === "cjdropshipping") return new CjDropshippingAdapter(supplier);
   return new SupplierAdapter(supplier);
 }
+import { normalizePackage } from "./dispatch-packages.service.js";

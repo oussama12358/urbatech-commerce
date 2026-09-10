@@ -10,10 +10,13 @@ import {
   ensureSupplierSettlementsForOrder,
   listSupplierSettlements,
   markSupplierSettlementPaid,
+  reconcilePayPalSupplierPayout,
   summarizeSupplierSettlements
 } from "../settlements/settlement.service.js";
 import { getExchangeQuote, roundCurrency } from "../currencies/currency.service.js";
 import { carrierName, carrierOptions, resolveTrackingUrl } from "../../utils/carriers.js";
+import { topLevelFulfillment } from "../suppliers/supplier.service.js";
+import { packagesForDispatch, removeDispatchPackage, replaceDispatchPackage } from "../suppliers/dispatch-packages.service.js";
 
 export const adminRouter = Router();
 const onlineSupplierStatuses = ["Connected", "Active"];
@@ -99,6 +102,12 @@ adminRouter.post("/orders/:id/refund", async (req, res, next) => {
 });
 
 const fulfillmentUpdateSchema = z.object({
+  // Existing dispatches are addressed by their supplier order identifier. This
+  // is intentionally server-selected, not a supplier id supplied by the UI.
+  dispatch_supplier_order_id: z.string().trim().max(180).optional(),
+  package_id: z.string().trim().max(180).optional(),
+  package_action: z.enum(["add", "update", "remove"]).optional(),
+  package_items: z.array(z.object({ product_id: z.string().trim().max(180), qty: z.coerce.number().int().positive() })).max(100).optional(),
   carrier: z.string().trim().max(120).optional(),
   carrier_code: z.string().trim().max(64).optional(),
   tracking: z.string().trim().max(180).optional(),
@@ -123,7 +132,7 @@ const settlementPayoutSchema = z.object({
 adminRouter.put("/orders/:id/fulfillment", async (req, res, next) => {
   try {
     const payload = fulfillmentUpdateSchema.parse(req.body || {});
-    if (!payload.carrier && !payload.carrier_code && !payload.tracking && !payload.tracking_url && !payload.status) {
+    if (payload.package_action !== "remove" && !payload.carrier && !payload.carrier_code && !payload.tracking && !payload.tracking_url && !payload.status) {
       res.status(400).json({ error: "Provide a carrier, tracking number, or fulfillment status." });
       return;
     }
@@ -134,10 +143,32 @@ adminRouter.put("/orders/:id/fulfillment", async (req, res, next) => {
       return;
     }
 
-    const selectedCarrier = carrierName(payload.carrier_code, payload.carrier || order.carrier || "");
-    const nextTracking = payload.tracking || order.tracking || "";
+    const dispatches = Array.isArray(order.supplier_dispatches) ? [...order.supplier_dispatches] : [];
+    const requestedDispatchId = payload.dispatch_supplier_order_id || "";
+    let dispatchIndex = requestedDispatchId
+      ? dispatches.findIndex((dispatch) => dispatch.supplier_order_id === requestedDispatchId)
+      : dispatches.findIndex((dispatch) => dispatch.dispatch_mode === "manual" || !dispatch.supplier_id);
+
+    if (requestedDispatchId && dispatchIndex < 0) {
+      res.status(404).json({ error: "Shipment not found for this order." });
+      return;
+    }
+
+    const previousDispatch = dispatchIndex >= 0
+      ? dispatches[dispatchIndex]
+      : { supplier_id: null, supplier_order_id: `URBATECH-${order.id}`, dispatch_mode: "manual" };
+    const existingPackages = packagesForDispatch(previousDispatch);
+    const action = payload.package_action || "update";
+    const packageIndex = payload.package_id ? existingPackages.findIndex((item) => item.id === payload.package_id) : 0;
+    if (action !== "add" && packageIndex < 0) {
+      res.status(404).json({ error: "Package not found for this shipment." });
+      return;
+    }
+    const previousPackage = action === "add" ? {} : existingPackages[packageIndex] || {};
+    const selectedCarrier = carrierName(payload.carrier_code || previousPackage.carrier_code, payload.carrier || previousPackage.carrier || "");
+    const nextTracking = payload.tracking || previousPackage.tracking || "";
     const nextTrackingUrl = resolveTrackingUrl({
-      carrierCode: payload.carrier_code || order.carrier_code,
+      carrierCode: payload.carrier_code || previousPackage.carrier_code,
       carrier: selectedCarrier,
       tracking: nextTracking,
       // An explicitly empty field means "use the carrier's normal link",
@@ -145,29 +176,34 @@ adminRouter.put("/orders/:id/fulfillment", async (req, res, next) => {
       customUrl: payload.tracking_url || null
     });
     const previousStatus = order.status;
-    const trackingChanged = Boolean(payload.tracking && payload.tracking !== order.tracking);
-    const dispatches = Array.isArray(order.supplier_dispatches) ? [...order.supplier_dispatches] : [];
-    const manualIndex = dispatches.findIndex((dispatch) => dispatch.dispatch_mode === "manual" || !dispatch.supplier_id);
-    const manualDispatch = {
-      ...(manualIndex >= 0 ? dispatches[manualIndex] : { supplier_id: null, supplier_order_id: `URBATECH-${order.id}`, dispatch_mode: "manual" }),
-      ...(selectedCarrier ? { carrier: selectedCarrier } : {}),
-      ...(payload.carrier_code ? { carrier_code: payload.carrier_code } : {}),
-      ...(payload.tracking ? { tracking: payload.tracking } : {}),
-      ...(nextTrackingUrl ? { tracking_url: nextTrackingUrl } : {}),
-      ...(payload.status ? { status: payload.status } : {}),
-      fulfilled_manually_at: new Date()
-    };
-    if (manualIndex >= 0) dispatches[manualIndex] = manualDispatch;
-    else dispatches.push(manualDispatch);
-
-    await orders.updateOne(
-      { id: order.id },
-      { $set: {
+    const trackingChanged = Boolean(payload.tracking && payload.tracking !== previousPackage.tracking);
+    let updatedDispatch;
+    if (action === "remove") {
+      updatedDispatch = removeDispatchPackage(previousDispatch, payload.package_id);
+    } else {
+      updatedDispatch = replaceDispatchPackage(previousDispatch, action === "add" ? null : payload.package_id, {
         ...(selectedCarrier ? { carrier: selectedCarrier } : {}),
         ...(payload.carrier_code ? { carrier_code: payload.carrier_code } : {}),
         ...(payload.tracking ? { tracking: payload.tracking } : {}),
         ...(nextTrackingUrl ? { tracking_url: nextTrackingUrl } : {}),
         ...(payload.status ? { status: payload.status } : {}),
+        ...(payload.package_items ? { items: payload.package_items.map((item) => ({ product_id: item.product_id, quantity: item.qty })) } : {})
+      });
+    }
+    updatedDispatch.fulfilled_manually_at = new Date();
+    if (dispatchIndex >= 0) dispatches[dispatchIndex] = updatedDispatch;
+    else dispatches.push(updatedDispatch);
+    const fulfillment = topLevelFulfillment(order, dispatches);
+    const isSingleDispatch = dispatches.length === 1;
+
+    await orders.updateOne(
+      { id: order.id },
+      { $set: {
+        ...fulfillment,
+        // These fields are retained solely as a legacy single-shipment
+        // summary. Dispatch records remain authoritative for multi-shipment.
+        ...(isSingleDispatch && payload.carrier_code ? { carrier_code: payload.carrier_code } : {}),
+        ...(isSingleDispatch && nextTrackingUrl ? { tracking_url: nextTrackingUrl } : {}),
         supplier_dispatches: dispatches,
         fulfillment_updated_at: new Date()
       } }
@@ -228,6 +264,19 @@ adminRouter.post("/settlements/:id/pay", async (req, res, next) => {
     const settlement = await markSupplierSettlementPaid(req.params.id, settlementPayoutSchema.parse(req.body || {}));
     if (!settlement) {
       res.status(404).json({ error: "Settlement not found" });
+      return;
+    }
+    res.json({ data: settlement });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post("/settlements/:id/reconcile", async (req, res, next) => {
+  try {
+    const settlement = await reconcilePayPalSupplierPayout(req.params.id);
+    if (!settlement) {
+      res.status(404).json({ error: "Processing PayPal settlement not found" });
       return;
     }
     res.json({ data: settlement });

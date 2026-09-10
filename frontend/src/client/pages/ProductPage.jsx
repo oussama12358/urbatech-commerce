@@ -30,7 +30,7 @@ export default function ProductPage() {
   useLocale();
   const { id } = useParams();
   const navigate = useNavigate();
-  const { products, productsLoading, addToCart, cart, user, updateProfile } = useStore();
+  const { products, productsLoading, addToCart, cart, user, updateProfile, displayCurrency } = useStore();
   const [product, setProduct] = useState(() => products.find((item) => item.id === id) || null);
   const [directProductLoading, setDirectProductLoading] = useState(false);
   const [directProductTried, setDirectProductTried] = useState(false);
@@ -60,7 +60,7 @@ export default function ProductPage() {
 
     setDirectProductLoading(true);
     const api = createApiClient(user?.token);
-    api(`/products/${encodeURIComponent(id)}`)
+    api(`/products/${encodeURIComponent(id)}${displayCurrency ? `?currency=${encodeURIComponent(displayCurrency)}` : ""}`)
       .then((json) => {
         if (json?.data) {
           setProduct(json.data);
@@ -73,7 +73,7 @@ export default function ProductPage() {
         setDirectProductLoading(false);
         setDirectProductTried(true);
       });
-  }, [id, product, directProductLoading, directProductTried, user?.token]);
+  }, [id, product, directProductLoading, directProductTried, user?.token, displayCurrency]);
 
   const selectedShipCountry = useMemo(
     () => (shipCountryCode ? getCountryByCode(shipCountryCode) : null),

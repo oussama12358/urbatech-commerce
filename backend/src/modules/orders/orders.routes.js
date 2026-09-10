@@ -10,7 +10,8 @@ import {
   toCountryCode
 } from "../../utils/shipping-countries.js";
 import { getExchangeQuote, productBaseCurrency, sellingBasePrice, normalizeCurrency, roundCurrency } from "../currencies/currency.service.js";
-import { resolveTrackingUrl } from "../../utils/carriers.js";
+import { getConfiguredOrderCurrency } from "./order-currency.service.js";
+import { buildCustomerShipments } from "./shipment-serialization.service.js";
 
 const orderSchema = z.object({
   billing: z.record(z.any()).default({}),
@@ -28,7 +29,11 @@ function roundMoney(value) {
   return Math.round(Number(value || 0) * 100) / 100;
 }
 
-function serializeOrder(order, items = [], { includeInternal = false } = {}) {
+export function serializeOrder(order, items = [], { includeInternal = false } = {}) {
+  const shipments = buildCustomerShipments(order, items);
+  // Order-level tracking remains a legacy/single-shipment summary only. For
+  // multi-shipment orders the dispatch collection is the customer source of truth.
+  const legacyTracking = shipments.length <= 1 ? shipments[0] || null : null;
   const serialized = {
     id: order.id,
     status: order.status,
@@ -40,14 +45,10 @@ function serializeOrder(order, items = [], { includeInternal = false } = {}) {
     total: order.total,
     currency: order.currency || "USD",
     billing: order.billing,
-    tracking: order.tracking || null,
-    carrier: order.carrier || null,
-    tracking_url: resolveTrackingUrl({
-      carrierCode: order.carrier_code,
-      carrier: order.carrier,
-      tracking: order.tracking,
-      customUrl: order.tracking_url
-    }),
+    tracking: includeInternal ? order.tracking || null : legacyTracking?.tracking || null,
+    carrier: includeInternal ? order.carrier || null : legacyTracking?.carrier || null,
+    tracking_url: includeInternal ? buildCustomerShipments({ ...order, supplier_dispatches: [] }, items)[0]?.tracking_url || null : legacyTracking?.tracking_url || null,
+    shipments,
     stripe_session_id: order.stripe_session_id || null,
     paid_at: order.paid_at || null,
     created_at: order.created_at,
@@ -222,7 +223,6 @@ ordersRouter.get("/", requireAuth, async (req, res, next) => {
       rows.map(async (order) => {
         const items = await orderItems
           .find({ order_id: order.id })
-          .project(itemProjection(false))
           .toArray();
         return serializeOrder(order, items, { includeInternal: false });
       })
@@ -251,7 +251,10 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
   try {
     const payload = orderSchema.parse(req.body);
     const billing = payload.billing || {};
-    const currency = normalizeCurrency(payload.currency || "USD");
+    // Never accept a display/browser currency as the payment currency. The
+    // configured order currency is the single normalisation target for every
+    // line in this order; payload.currency remains schema-compatible only.
+    const currency = await getConfiguredOrderCurrency();
     const trusted = await buildTrustedOrderItems(payload.items, billing, currency);
     const subtotal = trusted.subtotal;
     // The selling price is final: checkout adds neither a service fee nor a
@@ -285,7 +288,8 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
         currency,
         exchange_rate_snapshot: {
           rate_provider_base: "USD",
-          fetched_at: new Date()
+          fetched_at: new Date(),
+          order_currency: currency
         },
         supplier_payable: trusted.supplierPayable,
         gross_profit: trusted.grossProfit,
@@ -303,7 +307,6 @@ ordersRouter.post("/", requireAuth, async (req, res, next) => {
       const createdOrder = await orders.findOne({ id });
       const itemsRaw = await orderItems
         .find({ order_id: id })
-        .project(itemProjection(false))
         .toArray();
 
       const customers = await getCollection("customers");
@@ -364,7 +367,6 @@ export async function getOrderById(id, { includeInternal = false } = {}) {
   if (!order) return null;
   const items = await orderItems
     .find({ order_id: order.id })
-    .project(itemProjection(includeInternal))
     .toArray();
   return { ...serializeOrder(order, items, { includeInternal }), customer_id: order.customer_id };
 }

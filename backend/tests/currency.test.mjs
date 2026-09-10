@@ -8,6 +8,7 @@ import {
   normalizeCurrency,
   currencyRegistry
 } from "../src/modules/currencies/currency.service.js";
+import { resolveConfiguredOrderCurrency } from "../src/modules/orders/order-currency.service.js";
 
 test("PayPal registry includes documented major checkout currencies", () => {
   for (const currency of ["EUR", "USD", "GBP", "JPY", "TWD"]) assert.equal(PAYPAL_CURRENCIES.has(currency), true);
@@ -30,4 +31,17 @@ test("local storefront currencies can be displayed even when no gateway supports
   assert.equal(normalizeCurrency("TMT"), "TMT");
   assert.equal(currencyRegistry().some((currency) => currency.code === "TMT"), true);
   assert.equal(providerSupportsCurrency("stripe", "TMT"), false);
+});
+
+test("configured order currency is independent from Store display currency", () => {
+  // This resolver deliberately receives only server-side configuration.
+  assert.equal(resolveConfiguredOrderCurrency({ reportingCurrency: "USD" }), "USD");
+  assert.equal(resolveConfiguredOrderCurrency({ orderCurrency: "EUR", reportingCurrency: "USD" }), "EUR");
+});
+
+test("one configured order currency normalizes products with different bases", () => {
+  const target = resolveConfiguredOrderCurrency({ orderCurrency: "EUR" });
+  assert.equal(target, "EUR");
+  assert.notEqual(target, "USD");
+  assert.notEqual(target, "GBP");
 });

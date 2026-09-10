@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { env } from "../../config/env.js";
 import { getCollection } from "../../db/mongo.js";
+import { buildCustomerShipments } from "../orders/shipment-serialization.service.js";
 
 function escapeHtml(value = "") {
   return String(value)
@@ -241,6 +242,11 @@ export async function notifyCustomerFulfillmentUpdate(orderId, status, { previou
   const previousEvent = fulfillmentEvent(previousStatus);
   if (previousEvent === event && !trackingChanged) return null;
   const title = fulfillmentTitle(event);
+  const shipments = buildCustomerShipments(order, order.items || []);
+  const shipmentTracking = shipments
+    .filter((shipment) => shipment.carrier || shipment.tracking)
+    .map((shipment, index) => `<p><strong>Shipment ${index + 1}</strong><br><strong>Carrier:</strong> ${escapeHtml(shipment.carrier || "-")}<br><strong>Tracking:</strong> ${escapeHtml(shipment.tracking || "-")}</p>`)
+    .join("");
   return sendNotificationEmail({
     to: orderCustomerEmail(order),
     subject: `${title}: ${order.id}`,
@@ -252,7 +258,7 @@ export async function notifyCustomerFulfillmentUpdate(orderId, status, { previou
       `
         <p>Hello ${escapeHtml(orderCustomerName(order))},</p>
         <p>Your order <strong>${escapeHtml(order.id)}</strong> ${escapeHtml(fulfillmentSentence(event))}.</p>
-        ${order.carrier || order.tracking ? `<p><strong>Carrier:</strong> ${escapeHtml(order.carrier || "-")}<br><strong>Tracking:</strong> ${escapeHtml(order.tracking || "-")}</p>` : ""}
+        ${shipmentTracking}
       `
     )
   });

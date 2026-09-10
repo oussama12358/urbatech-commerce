@@ -327,7 +327,7 @@ checkoutRouter.post("/paymee/webhook", async (req, res, next) => {
       return;
     }
     const order = await findOrderForProviderPayment("paymee", payload.token, payload.order_id);
-    if (!order || String(payload.order_id || "") !== order.id || String(order.currency || "").toUpperCase() !== "TND" || Number(payload.amount) !== Number(roundCurrency(order.total, "TND"))) {
+    if (!order || String(payload.order_id || "") !== order.id || Number(payload.amount) !== Number(roundCurrency(order.total, order.currency || "USD"))) {
       res.status(400).json({ error: "Paymee payment does not match the order." });
       return;
     }

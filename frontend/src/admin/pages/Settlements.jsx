@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BadgeDollarSign } from "lucide-react";
+import { BadgeDollarSign, RefreshCw } from "lucide-react";
 import { createApiClient } from "../../shared/lib/api.js";
 import { money } from "../../shared/lib/format.js";
 import { useStore } from "../../store/StoreContext.jsx";
@@ -70,6 +70,20 @@ export default function Settlements() {
     }
   };
 
+  const reconcilePayPal = async (settlement) => {
+    setBusyId(settlement.id);
+    setError("");
+    try {
+      const api = createApiClient(user.token);
+      await api(`/admin/settlements/${settlement.id}/reconcile`, { method: "POST" });
+      await load();
+    } catch (err) {
+      setError(err.message || "Unable to check the PayPal payout status.");
+    } finally {
+      setBusyId("");
+    }
+  };
+
   return (
     <main className="admin-main">
       <div className="admin-page-head">
@@ -94,6 +108,11 @@ export default function Settlements() {
                   <td>{(settlement.payout_method || "manual").replaceAll("_", " ")}</td>
                   <td>{settlement.payout_reference || "-"}</td>
                   <td>
+                    {settlement.status === "processing" && settlement.payout_method === "paypal_payout" && (
+                      <button className="icon-btn" type="button" onClick={() => reconcilePayPal(settlement)} disabled={busyId === settlement.id} title="Check PayPal payout status">
+                        <RefreshCw />
+                      </button>
+                    )}
                     {settlement.status === "pending" && (
                       <button className="icon-btn" type="button" onClick={() => markPaid(settlement)} disabled={busyId === settlement.id} title={settlement.payout_method === "stripe_connect" ? "Pay with Stripe Connect" : settlement.payout_method === "paypal_payout" ? "Pay with PayPal Payouts" : t("markPaid") }>
                         <BadgeDollarSign />

@@ -6,7 +6,7 @@ export default function SummaryBox({ totals }) {
     <div className="summary">
       <div className="summary-row total">
         <span>{t("total")}</span>
-        <strong>{money(totals.total)}</strong>
+        <strong>{money(totals.total, totals.currency)}</strong>
       </div>
     </div>
   );

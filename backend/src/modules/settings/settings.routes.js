@@ -4,6 +4,7 @@ import { getCollection } from "../../db/mongo.js";
 import { env } from "../../config/env.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { ensureDefaultPaymentProviders, isProviderConfigured } from "../payments/payment.service.js";
+import { getConfiguredOrderCurrency } from "../orders/order-currency.service.js";
 
 const settingsSchema = z.object({
   storefrontEnabled: z.boolean(),
@@ -42,14 +43,16 @@ async function getSettings() {
       storefrontEnabled: true,
       disableEmailVerification: Boolean(env.disableEmailVerification),
       payments: await getPaymentsStatus(),
-      reportingCurrency: "USD"
+      reportingCurrency: "USD",
+      orderCurrency: await getConfiguredOrderCurrency()
     };
   }
   return {
     storefrontEnabled: row.value !== false,
     disableEmailVerification: Boolean(env.disableEmailVerification),
     payments: await getPaymentsStatus(),
-    reportingCurrency: String(reportingRow?.value || "USD").toUpperCase()
+    reportingCurrency: String(reportingRow?.value || "USD").toUpperCase(),
+    orderCurrency: await getConfiguredOrderCurrency()
   };
 }
 

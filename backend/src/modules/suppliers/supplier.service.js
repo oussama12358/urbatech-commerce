@@ -10,6 +10,7 @@ import { ensureSupplierSettlementsForOrder } from "../settlements/settlement.ser
 import { getSupplierAdapter } from "./supplier-adapters.js";
 import { normalizeCountryCodes } from "../../utils/shipping-countries.js";
 import { normalizeCurrency } from "../currencies/currency.service.js";
+import { normalizePackage, packagesForDispatch } from "./dispatch-packages.service.js";
 
 const MAX_DISPATCH_ATTEMPTS = 6;
 const RETRY_BASE_DELAY_MS = 5 * 60 * 1000;
@@ -113,10 +114,11 @@ function aggregateFulfillmentStatus(dispatches, fallback = "processing") {
   return dispatches[0]?.status || fallback;
 }
 
-function topLevelFulfillment(order, dispatches) {
+export function topLevelFulfillment(order, dispatches) {
   const firstDispatch = dispatches.find((dispatch) => dispatch.supplier_order_id) || dispatches[0] || {};
-  const firstTracking = dispatches.find((dispatch) => dispatch.tracking) || {};
-  const firstCarrier = dispatches.find((dispatch) => dispatch.carrier) || {};
+  const allPackages = dispatches.flatMap((dispatch) => packagesForDispatch(dispatch));
+  const firstTracking = allPackages.find((item) => item.tracking) || dispatches.find((dispatch) => dispatch.tracking) || {};
+  const firstCarrier = allPackages.find((item) => item.carrier) || dispatches.find((dispatch) => dispatch.carrier) || {};
   return {
     supplier_id: firstDispatch.supplier_id || order.supplier_id || null,
     supplier_order_id: firstDispatch.supplier_order_id || order.supplier_order_id || null,
@@ -124,6 +126,21 @@ function topLevelFulfillment(order, dispatches) {
     carrier: firstCarrier.carrier || order.carrier || null,
     status: aggregateFulfillmentStatus(dispatches, order.status)
   };
+}
+
+export function packagesFromSupplierUpdate(dispatch, { packages, tracking, carrier, status }) {
+  if (Array.isArray(packages)) return packages.map((item) => normalizePackage(item));
+  // Historical dispatches keep their old single tracking fields untouched.
+  if (!Array.isArray(dispatch.packages) || (!tracking && !carrier && !status)) return undefined;
+  if (dispatch.packages.length === 0) {
+    return [normalizePackage({ tracking, carrier, status })];
+  }
+  // A non-package-aware supplier update may safely update its sole package,
+  // but must never guess which one of several packages it refers to.
+  if (dispatch.packages.length === 1) {
+    return [{ ...dispatch.packages[0], ...(tracking ? { tracking } : {}), ...(carrier ? { carrier } : {}), ...(status ? { status } : {}) }];
+  }
+  return undefined;
 }
 
 async function enqueueSupplierDispatchRetry({ orderId, supplierId, error }) {
@@ -430,6 +447,12 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
         supplier_payable: supplierSubtotal,
         status: "Manual fulfillment pending",
         dispatch_mode: "manual",
+        packages: [],
+        items: supplierItems.map((item) => ({
+          product_id: item.local_product_id,
+          name: item.name,
+          quantity: item.quantity
+        })),
         dispatched_at: new Date()
       };
       dispatches.push(manualDispatch);
@@ -468,7 +491,17 @@ export async function dispatchSupplierOrder(orderId, { onlySupplierId = null } =
         supplier_id: supplierId,
         supplier_payable: supplierSubtotal,
         dispatched_at: new Date(),
-        ...response
+        ...response,
+        packages: Array.isArray(response.packages)
+          ? response.packages
+          : response.tracking || response.carrier
+            ? [normalizePackage(response)]
+            : [],
+        items: supplierItems.map((item) => ({
+          product_id: item.local_product_id,
+          name: item.name,
+          quantity: item.quantity
+        }))
       });
       notifySupplierNewOrder(order.id, supplierId, {
         supplier_id: supplierId,
@@ -555,7 +588,7 @@ export async function processSupplierDispatchRetries({ limit = 25 } = {}) {
   return { processed: rows.length, results };
 }
 
-export async function applySupplierOrderUpdate({ supplierOrderId, supplier_order_id, status, tracking, carrier, invoice_number, invoice_url }) {
+export async function applySupplierOrderUpdate({ supplierOrderId, supplier_order_id, status, tracking, carrier, packages, invoice_number, invoice_url }) {
   const orders = await getCollection("orders");
   const lookupOrderId = supplierOrderId || supplier_order_id;
   const order = await orders.findOne({
@@ -568,11 +601,13 @@ export async function applySupplierOrderUpdate({ supplierOrderId, supplier_order
   let dispatches = (order.supplier_dispatches || []).map((dispatch) => {
     if (dispatch.supplier_order_id !== lookupOrderId) return dispatch;
     matchedDispatch = true;
+    const nextPackages = packagesFromSupplierUpdate(dispatch, { packages, tracking, carrier, status });
     return {
       ...dispatch,
       ...(status ? { status } : {}),
       ...(tracking ? { tracking } : {}),
       ...(carrier ? { carrier } : {}),
+      ...(nextPackages ? { packages: nextPackages } : {}),
       ...(invoice_number ? { invoice_number } : {}),
       ...(invoice_url ? { invoice_url } : {}),
       supplier_status_synced_at: new Date()
@@ -586,6 +621,7 @@ export async function applySupplierOrderUpdate({ supplierOrderId, supplier_order
         ...(status ? { status } : {}),
         ...(tracking ? { tracking } : {}),
         ...(carrier ? { carrier } : {}),
+        ...(Array.isArray(packages) ? { packages: packages.map((item) => normalizePackage(item)) } : tracking || carrier ? { packages: [normalizePackage({ tracking, carrier, status })] } : {}),
         ...(invoice_number ? { invoice_number } : {}),
         ...(invoice_url ? { invoice_url } : {}),
         supplier_status_synced_at: new Date()
@@ -668,13 +704,16 @@ export function verifyWebhookSignature(supplier, payload, signature) {
 }
 
 export function normalizeSupplierWebhook(supplier, payload) {
+  const adapter = getSupplierAdapter(supplier);
   const mapping = {
     supplier_order_id: "supplier_order_id|order_id|id",
     status: "status|order_status",
     tracking: "tracking|tracking_number|trackingCode",
     carrier: "carrier|shipping_carrier",
+    packages: "packages|shipments|parcels",
     invoice_number: "invoice_number|invoiceNumber|invoice.id",
     invoice_url: "invoice_url|invoiceUrl|invoice.url|invoice.pdf_url",
+    ...adapter.orderStatusMapping,
     ...(supplier.webhook_mapping || {})
   };
   return {
@@ -682,6 +721,7 @@ export function normalizeSupplierWebhook(supplier, payload) {
     status: firstValue(payload, mapping.status, null),
     tracking: firstValue(payload, mapping.tracking, null),
     carrier: firstValue(payload, mapping.carrier, null),
+    packages: adapter.normalizePackages(firstValue(payload, mapping.packages, null), mapping),
     invoice_number: firstValue(payload, mapping.invoice_number, null),
     invoice_url: firstValue(payload, mapping.invoice_url, null)
   };

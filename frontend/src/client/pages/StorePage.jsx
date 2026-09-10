@@ -9,7 +9,7 @@ import { currencyOptionLabel } from "../../shared/lib/currency.js";
 
 export default function StorePage() {
   useLocale();
-  const { products, productsLoading, currency, currencies, setCurrency, resetToProductCurrencies } = useStore();
+  const { products, productsLoading, displayCurrency, currencies, setCurrency, resetToProductCurrencies } = useStore();
   const allLabel = t("all");
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
@@ -34,7 +34,7 @@ export default function StorePage() {
     // Refreshing rates/currency changes numeric values, so a stale fixed cap
     // must never make the catalogue look empty.
     setMaxPrice(priceRangeMax);
-  }, [currency, priceRangeMax]);
+  }, [displayCurrency, priceRangeMax]);
 
   useEffect(() => {
     const closeMenu = (event) => {
@@ -44,7 +44,7 @@ export default function StorePage() {
     return () => document.removeEventListener("mousedown", closeMenu);
   }, []);
 
-  const selectedCurrency = currencies.find((item) => item.code === currency);
+  const selectedCurrency = currencies.find((item) => item.code === displayCurrency);
   const chooseCurrency = (code) => {
     setCurrencyQuery("");
     setCurrencyMenuOpen(false);
@@ -58,7 +58,7 @@ export default function StorePage() {
       const matchesCategory = category === "all" || product.category === category;
       // Before country/manual selection, products intentionally retain their
       // own base currencies. A numeric cross-currency price filter is invalid.
-      const matchesPrice = !currency || product.price <= maxPrice;
+      const matchesPrice = !displayCurrency || product.price <= maxPrice;
       const text = [product.name, product.category, product.desc, (product.specs || []).join(" ")].join(" ").toLowerCase();
       return matchesCategory && matchesPrice && text.includes(q);
     });
@@ -124,12 +124,12 @@ export default function StorePage() {
               ) : null}
             </div>
           </div>
-          {currency ? (
+          {displayCurrency ? (
             <>
               <h2 className="section-title">{t("maxPriceTitle")}</h2>
               <div className="range-row">
                 <input type="range" min="0" max={priceRangeMax} step={Math.max(1, Math.ceil(priceRangeMax / 100))} value={maxPrice} onChange={(event) => setMaxPrice(Number(event.target.value))} />
-                <strong>{money(maxPrice, currency)}</strong>
+                <strong>{money(maxPrice, displayCurrency)}</strong>
               </div>
             </>
           ) : null}

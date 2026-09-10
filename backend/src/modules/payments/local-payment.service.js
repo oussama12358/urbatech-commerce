@@ -29,9 +29,6 @@ export function localProviderConfigured(key) {
 
 export async function createKonnectPayment(order) {
   const currency = String(order.currency || "USD").toUpperCase();
-  if (!new Set(["TND", "EUR", "USD"]).has(currency)) {
-    throw new Error("Konnect accepts TND, EUR, or USD for this checkout.");
-  }
   const amount = Math.round(Number(order.total || 0) * minorUnitMultiplier(currency));
   const { firstName, lastName } = fullNameParts(order);
   const billing = order.billing || {};
@@ -83,7 +80,6 @@ export async function verifyKonnectPayment(paymentId, order) {
 
 export async function createPaymeePayment(order) {
   const currency = String(order.currency || "USD").toUpperCase();
-  if (currency !== "TND") throw new Error("Paymee accepts TND only. Please choose TND or another payment method.");
   const { firstName, lastName } = fullNameParts(order);
   const billing = order.billing || {};
   const base = env.paymeeMode === "live" ? "https://app.paymee.tn" : "https://sandbox.paymee.tn";
@@ -124,7 +120,6 @@ export function paymeePaymentSucceeded(payload) {
 
 export async function createFlouciPayment(order) {
   const currency = String(order.currency || "USD").toUpperCase();
-  if (currency !== "TND") throw new Error("Flouci accepts TND only. Please choose TND or another payment method.");
   const amount = Math.round(Number(order.total || 0) * minorUnitMultiplier(currency));
   const response = await fetch(`${env.flouciApiBaseUrl.replace(/\/$/, "")}/generate_payment`, {
     method: "POST",

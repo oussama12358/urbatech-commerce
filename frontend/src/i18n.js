@@ -4,6 +4,9 @@ const STORAGE_KEY = "ut_locale";
 
 const locales = {
   en: {
+    shipment: "Shipment",
+    shipments: "Shipments",
+    trackMyPackage: "Track my package",
     products: "Products",
     categories: "Categories",
     productOriginalCurrency: "Product original currency",
@@ -678,6 +681,9 @@ const locales = {
     reportingCurrencyNote: "Internal reporting currency: USD. Dashboard totals are converted to USD for one clear view; each payment provider settles to your merchant account according to its own supported currencies and account settings.",
 },
   fr: {
+    shipment: "Expédition",
+    shipments: "Expéditions",
+    trackMyPackage: "Suivre mon colis",
     productOriginalCurrency: "Devise d\u2019origine du produit",
     chargedInCurrency: "Paiement final : {amount} en {currency}.",
     excelImportIdentityHint: "Obligatoire : conservez le m\u00eame identifiant produit fournisseur / SKU \u00e0 chaque r\u00e9importation. Le modifier cr\u00e9e un nouveau produit.",
@@ -1331,6 +1337,9 @@ const locales = {
     reportingCurrencyNote: "Devise interne de reporting : USD. Les totaux du tableau de bord sont convertis en USD pour une vue unique ; chaque prestataire de paiement règle votre compte marchand selon les devises prises en charge et les paramètres de votre compte.",
 },
   ar: {
+    shipment: "شحنة",
+    shipments: "الشحنات",
+    trackMyPackage: "تتبّع شحنتي",
     productOriginalCurrency: "\u0627\u0644\u0639\u0645\u0644\u0629 \u0627\u0644\u0623\u0635\u0644\u064a\u0629 \u0644\u0644\u0645\u0646\u062a\u062c",
     chargedInCurrency: "\u0627\u0644\u062f\u0641\u0639 \u0627\u0644\u0646\u0647\u0627\u0626\u064a: {amount} \u0628\u0639\u0645\u0644\u0629 {currency}.",
     excelImportIdentityHint: "\u0645\u0637\u0644\u0648\u0628: \u062d\u0627\u0641\u0638 \u0639\u0644\u0649 \u0646\u0641\u0633 \u0645\u0639\u0631\u0651\u0641 \u0645\u0646\u062a\u062c \u0627\u0644\u0645\u0648\u0631\u0651\u062f / SKU \u0641\u064a \u0643\u0644 \u0627\u0633\u062a\u064a\u0631\u0627\u062f. \u062a\u063a\u064a\u064a\u0631\u0647 \u064a\u0646\u0634\u0626 \u0645\u0646\u062a\u062c\u0627\u064b \u062c\u062f\u064a\u062f\u0627\u064b.",

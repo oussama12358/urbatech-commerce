@@ -19,6 +19,55 @@ export default function OrderDetails() {
   const [tracking, setTracking] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
   const [fulfillmentStatus, setFulfillmentStatus] = useState("Processing");
+  const [selectedDispatchId, setSelectedDispatchId] = useState("");
+  const [selectedPackageId, setSelectedPackageId] = useState("");
+  const [packageAction, setPackageAction] = useState("update");
+  const [packageItems, setPackageItems] = useState([]);
+
+  const hydrateFulfillmentForm = (nextOrder, preferredDispatchId = "") => {
+    const dispatches = Array.isArray(nextOrder?.supplier_dispatches) ? nextOrder.supplier_dispatches : [];
+    const dispatch = dispatches.find((item) => item.supplier_order_id === preferredDispatchId) || dispatches[0] || nextOrder || {};
+    const packages = Array.isArray(dispatch.packages)
+      ? dispatch.packages
+      : dispatch.carrier || dispatch.tracking || dispatch.tracking_url
+        ? [{ id: "legacy", carrier: dispatch.carrier, carrier_code: dispatch.carrier_code, tracking: dispatch.tracking, tracking_url: dispatch.tracking_url, status: dispatch.status }]
+        : [];
+    const selectedPackage = packages.find((item) => item.id === preferredDispatchId) || packages[0] || {};
+    setSelectedDispatchId(dispatches.length ? dispatch.supplier_order_id || "" : "");
+    setSelectedPackageId(selectedPackage.id || "");
+    setPackageAction("update");
+    setCarrier(selectedPackage.carrier || "");
+    setCarrierCode(selectedPackage.carrier_code || "custom");
+    setTracking(selectedPackage.tracking || "");
+    setTrackingUrl(selectedPackage.tracking_url || "");
+    setFulfillmentStatus(["Processing", "Shipped", "Delivered"].includes(selectedPackage.status) ? selectedPackage.status : "Processing");
+    setPackageItems((selectedPackage.items || []).map((item) => ({ product_id: item.product_id || item.local_product_id, qty: Number(item.quantity ?? item.qty ?? 0) })).filter((item) => item.product_id));
+  };
+
+  const selectPackage = (packageId) => {
+    const dispatch = (order?.supplier_dispatches || []).find((item) => item.supplier_order_id === selectedDispatchId) || {};
+    const packages = Array.isArray(dispatch.packages) ? dispatch.packages : [];
+    const selectedPackage = packages.find((item) => item.id === packageId) || {};
+    setSelectedPackageId(packageId);
+    setPackageAction("update");
+    setCarrier(selectedPackage.carrier || "");
+    setCarrierCode(selectedPackage.carrier_code || "custom");
+    setTracking(selectedPackage.tracking || "");
+    setTrackingUrl(selectedPackage.tracking_url || "");
+    setFulfillmentStatus(["Processing", "Shipped", "Delivered"].includes(selectedPackage.status) ? selectedPackage.status : "Processing");
+    setPackageItems((selectedPackage.items || []).map((item) => ({ product_id: item.product_id || item.local_product_id, qty: Number(item.quantity ?? item.qty ?? 0) })).filter((item) => item.product_id));
+  };
+
+  const prepareNewPackage = () => {
+    setSelectedPackageId("");
+    setPackageAction("add");
+    setCarrier("");
+    setCarrierCode("custom");
+    setTracking("");
+    setTrackingUrl("");
+    setFulfillmentStatus("Processing");
+    setPackageItems([]);
+  };
 
   useEffect(() => {
     if (!user?.token) return;
@@ -26,11 +75,7 @@ export default function OrderDetails() {
     api(`/admin/orders/${id}`)
       .then((json) => {
         setOrder(json.data);
-        setCarrier(json.data?.carrier || "");
-        setCarrierCode(json.data?.carrier_code || "custom");
-        setTracking(json.data?.tracking || "");
-        setTrackingUrl(json.data?.tracking_url || "");
-        setFulfillmentStatus(["Processing", "Shipped", "Delivered"].includes(json.data?.status) ? json.data.status : "Processing");
+        hydrateFulfillmentForm(json.data);
       })
       .catch((err) => setError(err.message || t("unableToLoadOrder")));
     api("/admin/carriers")
@@ -42,11 +87,7 @@ export default function OrderDetails() {
     const api = createApiClient(user.token);
     const json = await api(`/admin/orders/${id}`);
     setOrder(json.data);
-    setCarrier(json.data?.carrier || "");
-    setCarrierCode(json.data?.carrier_code || "custom");
-    setTracking(json.data?.tracking || "");
-    setTrackingUrl(json.data?.tracking_url || "");
-    setFulfillmentStatus(["Processing", "Shipped", "Delivered"].includes(json.data?.status) ? json.data.status : "Processing");
+    hydrateFulfillmentForm(json.data, selectedDispatchId);
   };
 
   const saveFulfillment = async (event) => {
@@ -60,6 +101,10 @@ export default function OrderDetails() {
       await api(`/admin/orders/${id}/fulfillment`, {
         method: "PUT",
         body: JSON.stringify({
+          dispatch_supplier_order_id: selectedDispatchId || undefined,
+          package_id: selectedPackageId || undefined,
+          package_action: packageAction,
+          package_items: packageItems.filter((item) => Number(item.qty) > 0),
           carrier: carrierCode === "custom" ? carrier : "",
           carrier_code: carrierCode === "custom" ? "" : carrierCode,
           tracking,
@@ -160,9 +205,28 @@ export default function OrderDetails() {
           </div>
           <form className="panel form-grid" onSubmit={saveFulfillment}>
             <div>
-              <h2>Manual fulfillment</h2>
-              <p className="page-copy">For URBA TECH stock and Excel/CSV suppliers. API suppliers can continue updating tracking automatically.</p>
+              <h2>Shipment fulfillment</h2>
+              <p className="page-copy">Update carrier, tracking and delivery status for the selected shipment. Supplier API updates remain separate.</p>
             </div>
+            {order.supplier_dispatches?.length ? <label className="field-group">
+              <span>Shipment to update</span>
+              <select className="select" value={selectedDispatchId} onChange={(event) => hydrateFulfillmentForm(order, event.target.value)}>
+                {order.supplier_dispatches.map((dispatch, index) => <option key={`${dispatch.supplier_id || "manual"}-${dispatch.supplier_order_id || index}`} value={dispatch.supplier_order_id || ""}>
+                  Shipment {index + 1} — {dispatch.status || "Processing"}
+                </option>)}
+              </select>
+            </label> : null}
+            {order.supplier_dispatches?.length ? <label className="field-group">
+              <span>Package to update</span>
+              <select className="select" value={packageAction === "add" ? "" : selectedPackageId} onChange={(event) => event.target.value ? selectPackage(event.target.value) : prepareNewPackage()}>
+                <option value="">Add new package</option>
+                {(() => {
+                  const dispatch = order.supplier_dispatches.find((item) => item.supplier_order_id === selectedDispatchId) || {};
+                  const packages = Array.isArray(dispatch.packages) ? dispatch.packages : dispatch.carrier || dispatch.tracking || dispatch.tracking_url ? [{ id: "legacy", tracking: dispatch.tracking }] : [];
+                  return packages.map((packageRow, index) => <option key={packageRow.id || index} value={packageRow.id}>Package {index + 1} — {packageRow.tracking || "No tracking yet"}</option>);
+                })()}
+              </select>
+            </label> : null}
             <label className="field-group">
               <span>{t("carrier")}</span>
               <select className="select" value={carrierCode} onChange={(event) => { setCarrierCode(event.target.value); setTrackingUrl(""); }}>
@@ -170,6 +234,19 @@ export default function OrderDetails() {
                 {carrierOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
               </select>
             </label>
+            <div className="field-group" style={{ gridColumn: "1 / -1" }}>
+              <span>Products in this package (optional)</span>
+              {order.items.map((item) => {
+                const allocation = packageItems.find((entry) => entry.product_id === item.product_id);
+                return <label className="kv-row" key={item.product_id}>
+                  <span>{item.name} (max {item.qty})</span>
+                  <input className="input" style={{ maxWidth: 100 }} type="number" min="0" max={item.qty} value={allocation?.qty || ""} onChange={(event) => {
+                    const qty = Math.min(Number(item.qty || 0), Math.max(0, Number(event.target.value || 0)));
+                    setPackageItems((current) => [...current.filter((entry) => entry.product_id !== item.product_id), ...(qty ? [{ product_id: item.product_id, qty }] : [])]);
+                  }} />
+                </label>;
+              })}
+            </div>
             {carrierCode === "custom" ? <label className="field-group"><span>Carrier name</span><input className="input" value={carrier} onChange={(event) => setCarrier(event.target.value)} placeholder="DHL, Aramex, La Poste…" /></label> : null}
             <label className="field-group">
               <span>{t("tracking")}</span>
@@ -188,6 +265,15 @@ export default function OrderDetails() {
               </select>
             </label>
             <button className="primary-btn" type="submit" disabled={busy}>{busy ? t("processing") : "Save fulfillment"}</button>
+            {packageAction === "update" && selectedPackageId ? <button className="secondary-btn" type="button" disabled={busy} onClick={async () => {
+              if (!window.confirm("Remove this package?")) return;
+              setBusy(true); setError("");
+              try {
+                const api = createApiClient(user.token);
+                await api(`/admin/orders/${id}/fulfillment`, { method: "PUT", body: JSON.stringify({ dispatch_supplier_order_id: selectedDispatchId, package_id: selectedPackageId, package_action: "remove" }) });
+                setActionMessage("Package removed."); await refreshOrder();
+              } catch (err) { setError(err.message || "Unable to remove package."); } finally { setBusy(false); }
+            }}>Remove package</button> : null}
           </form>
           <div className="panel">
             <h2>{t("customer")}</h2>
