@@ -34,7 +34,7 @@ Every payment provider has a server-side checkout flow. An order becomes **Paid*
 - `PAYMEE_API_KEY`, `PAYMEE_MODE` (`sandbox` or `live`)
 - Webhook: `${API_ORIGIN}/api/checkout/paymee/webhook`
 - The backend verifies Paymee's `check_sum`, token, order ID and amount before marking the order paid.
-- Paymee is TND only in this implementation.
+- Checkout displays “Payment in TND only.” as an informational provider hint. URBA TECH sends the actual normalized order currency; Paymee accepts or rejects the request according to its own API response.
 
 ## Flouci
 
@@ -42,7 +42,7 @@ Every payment provider has a server-side checkout flow. An order becomes **Paid*
 - Optional `FLOUCI_API_BASE_URL` (default: `https://developers.flouci.com/api/v2`)
 - Webhook: `${API_ORIGIN}/api/checkout/flouci/webhook`
 - Every notification triggers a server-side `verify_payment` call. It requires `SUCCESS`, the expected millime amount and the matching order ID.
-- Flouci is TND only in this implementation.
+- Checkout displays “Payment in TND only.” as an informational provider hint. URBA TECH sends the actual normalized order currency; Flouci accepts or rejects the request according to its own API response.
 
 ## Safe tests
 

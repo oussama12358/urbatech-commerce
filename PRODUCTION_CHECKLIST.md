@@ -1,169 +1,90 @@
-# Production Readiness Checklist - Authentication System
+# URBA TECH INTER — Production Checklist
 
-## ✅ Core Auth Features
-- [x] **Login** - Local password login with email/password
-- [x] **Register/Signup** - Email registration with password strength validation
-- [x] **Email Verification** - Email verification token with 24-hour expiry
-- [x] **Logout** - Clears refresh token cookie
+Complete every unchecked item in the production environment before accepting live customer payments.
 
-## ✅ OAuth Integration
-- [x] **Google OAuth** - Full OAuth flow with state parameter
-- [x] **Apple OAuth** - Full OAuth flow with state parameter
-- [x] **Remember Me** - Extends refresh token expiry to 90 days for both local and OAuth
-- [x] **Session Token** - Default 1-day expiry if not remembered
+## Infrastructure and security
 
-## ✅ Forgot/Reset Password
-- [x] **Forgot Password** - Generic response prevents email enumeration
-- [x] **Reset Password** - One-time-use token with 15-minute expiry
-- [x] **Reset Success Page** - Dedicated UX page after password change
-- [x] **Token Hashing** - Tokens stored as SHA-256 hashes (not plaintext)
-- [x] **Revoke Sessions** - All refresh tokens cleared after password reset
-- [x] **Email via Resend** - Password reset email with branded template
+- [ ] Set `NODE_ENV=production`.
+- [ ] Set public HTTPS `API_ORIGIN` and `CLIENT_ORIGIN` values.
+- [ ] Set a long, unique `JWT_SECRET`; never use the development default.
+- [ ] Use managed MongoDB and test both backup and restore.
+- [ ] Enforce HTTPS at the reverse proxy/hosting platform.
+- [ ] Restrict `CLIENT_ORIGIN` to the production frontend domain.
+- [ ] Configure `ADMIN_NOTIFICATION_EMAILS`.
+- [x] Helmet, CORS, JWT bearer authorization, cookie-refresh CSRF protection, request IDs, and API rate limiting are implemented.
+- [ ] Add external error monitoring and production alerting.
 
-## ✅ Refresh Token Management
-- [x] **Token Rotation** - Old token removed, new one created on refresh
-- [x] **Expiry Tracking** - Each token stores creation time and expiry
-- [x] **Remember Flag** - Tracked per token for flexible expiry
-- [x] **Session Revocation** - All tokens cleared on password reset
-- [x] **User Metadata** - IP and User-Agent stored with tokens (for future audit)
+## Email
 
-## ✅ Security Implementation
-- [x] **Password Hashing** - bcryptjs with 10 rounds
-- [x] **JWT Signing** - Uses `JWT_SECRET` from environment
-- [x] **CSRF Protection** - X-CSRF-Token header and token endpoint
-- [x] **HttpOnly Cookies** - Refresh token is httpOnly (cannot be accessed by JS)
-- [x] **Secure Flag** - Set in production (NODE_ENV=production)
-- [x] **SameSite** - Set to 'lax' by default, 'strict' if `ENFORCE_SAMESITE_STRICT=true`
-- [x] **Password Requirements** - Minimum 8 chars, uppercase, lowercase, number, symbol
-- [x] **Generic Error Messages** - No email enumeration in login/forgot-password
+- [ ] Verify the Resend domain/DNS records and set `RESEND_API_KEY`.
+- [ ] Set `EMAIL_FROM` to the monitored business address, normally `URBA TECH <contact@urbatechinter.com>`.
+- [ ] Set `EMAIL_SYSTEM_FROM` to the automated address, normally `URBA TECH <noreply@urbatechinter.com>`.
+- [ ] Test verification, password reset, order, fulfillment, supplier, and settlement emails.
 
-## ⚠️ Rate Limiting
-**STATUS**: Not implemented yet
-- [ ] Rate limit on `/auth/login` (suggested: 5 attempts per 15 minutes per IP)
-- [ ] Rate limit on `/auth/forgot-password` (suggested: 3 requests per hour per email)
-- [ ] Rate limit on `/auth/signup` (suggested: 10 signups per hour per IP)
-- [ ] **Recommendation**: Use `express-rate-limit` with Redis/memory store
+## Customer payments
 
-## ⚠️ HTTPS & Environment
-**STATUS**: Partially configured
-- [x] HTTPS check in cookie Secure flag (NODE_ENV=production)
-- [ ] **TODO**: Ensure `.env.production` has `NODE_ENV=production`
-- [ ] **TODO**: Ensure reverse proxy (nginx/Cloudflare) enforces HTTPS
-- [ ] **TODO**: Add HSTS header in production
+Orders become paid only after provider confirmation is verified server-side. A browser redirect never marks an order as paid.
 
-## ⚠️ Email Delivery
-**STATUS**: Resend integration ready
-- [x] Email templates set up (verification + reset)
-- [x] `RESEND_API_KEY` environment variable
-- [x] `EMAIL_FROM` environment variable (default: `URBA TECH <noreply@urbatechinter.com>`)
-- [x] `CLIENT_ORIGIN` environment variable for email links
-- [ ] **TODO**: Test email delivery in staging
-- [ ] **TODO**: Add bounce/unsubscribe handling if using Resend webhooks
+- [ ] **Stripe/Card:** set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`; register `${API_ORIGIN}/api/checkout/webhook`; test success, 3DS, cancellation, duplicate webhook, changed amount, and refund.
+- [ ] **PayPal:** set `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE=live`, and `PAYPAL_WEBHOOK_ID`; register `${API_ORIGIN}/api/checkout/paypal/webhook`; test signature verification and refunds.
+- [ ] **Konnect / Paymee / Flouci:** add production credentials, configure their callbacks/webhooks, and complete sandbox tests before enabling them.
+- [ ] Enable only the providers that have real configured credentials in Admin Payments.
 
-## ⚠️ Logging & Monitoring
-**STATUS**: Not implemented yet
-- [ ] Authentication event logging (login, signup, logout, password reset)
-- [ ] Failed login attempt logging
-- [ ] Token refresh logging
-- [ ] OAuth event logging
-- [ ] **Recommendation**: Log to file or external service (Sentry, DataDog, etc.)
+## Currency, refunds, and settlements
 
-## ✅ Error Handling
-- [x] JWT parsing errors handled
-- [x] Invalid tokens rejected with 401
-- [x] Expired tokens trigger refresh attempt
-- [x] Refresh failure returns 401
-- [x] CSRF token mismatch returns 403
+- [x] Product base currency, Store display currency, and actual order/payment currency are separate.
+- [x] Order and FX snapshots are kept; refunds use original payment currency.
+- [x] Supplier settlement amount/currency is snapshotted and is not recalculated by later FX refreshes.
+- [ ] Configure reporting/order currency in Admin Settings before live orders.
+- [ ] Test multi-currency checkout, JPY/HUF/TWD rounding, refunds, and reporting totals.
+- [ ] Configure every supplier payout destination and payout currency.
+- [ ] For manual settlements, retain a real transfer reference and record actual amount/currency when different from the locked settlement.
+- [ ] For Stripe Connect, verify each connected account and supported payout currency.
+- [ ] For PayPal Payouts, enable Payouts in the Business account and test reconciliation. Current implementation uses the Settlements refresh/reconcile action; there is no dedicated PayPal Payout webhook or perpetual polling worker yet.
 
-## ⚠️ Testing
-**STATUS**: Manual testing recommended
-- [ ] Test login with valid credentials
-- [ ] Test login with invalid email
-- [ ] Test login with incorrect password
-- [ ] Test signup with weak password (should fail)
-- [ ] Test signup with existing email (should fail)
-- [ ] Test email verification link (24-hour window)
-- [ ] Test Google OAuth flow
-- [ ] Test Apple OAuth flow
-- [ ] Test remember me (check cookie expiry)
-- [ ] Test refresh token expiry
-- [ ] Test logout clears refresh cookie
-- [ ] Test forgot password doesn't reveal email existence
-- [ ] Test reset password with valid token
-- [ ] Test reset password with expired token
-- [ ] Test reset password revokes all sessions
-- [ ] Test CSRF token validation
+## Suppliers, fulfilment, and tracking
 
-## ⚠️ Database Indexes
-**STATUS**: Not optimized yet
-- [ ] Index on `customers.email` (for lookups)
-- [ ] Index on `customers.id` (for findById)
-- [ ] Index on `customers.appleId` (for Apple OAuth)
-- [ ] Index on `customers.refreshTokens.tokenHash` (for token lookup)
-- [ ] **Recommendation**: Add MongoDB indexes for auth fields
+- [x] Supplier dispatches and retry jobs are implemented.
+- [x] One dispatch supports one or more physical packages with independent carrier/tracking/status.
+- [x] Customer APIs expose only safe shipment/package data; supplier identity, costs, payables, credentials, and API metadata remain hidden.
+- [ ] Configure every API supplier's endpoint, credentials, webhook secret, and field mappings.
+- [ ] Test CSV/manual suppliers, API suppliers, multi-supplier orders, single-package shipments, and multi-package shipments.
+- [ ] Ensure multi-package supplier updates send `packages[]` or a package/shipment/parcel identifier. Ambiguous generic tracking updates are intentionally not assigned at random.
+- [ ] Confirm carrier/tracking remains visible without a URL and Track appears only for a valid custom or known-carrier URL.
 
-## ⚠️ Secrets Management
-**STATUS**: Environment variables in place
-- [x] All secrets in `.env` (not in code)
-- [x] JWT_SECRET configured
-- [x] GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET configured
-- [x] APPLE_CLIENT_ID, APPLE_TEAM_ID, APPLE_KEY_ID configured
-- [x] APPLE_PRIVATE_KEY_STRING or APPLE_PRIVATE_KEY_LOCATION configured
-- [x] RESEND_API_KEY configured
-- [ ] **TODO**: Rotate JWT_SECRET regularly
-- [ ] **TODO**: Use secrets manager (AWS Secrets Manager, HashiCorp Vault, etc.)
+## Final verification
 
-## 📋 Environment Variables Required
+- [ ] Run `npm run test:currencies --prefix backend`.
+- [ ] Run `node --test backend/tests/shipment-serialization.test.mjs`.
+- [ ] Run `npm run build --prefix frontend`.
+- [ ] Complete a staging journey: payment → paid → dispatch → tracking → settlement → refund.
+- [ ] Confirm the rollback and database restore procedure with the deployment owner.
 
-```
-# Core
+## Required environment variables
+
+Use `backend/.env.example` as the full template. Never expose credentials through frontend `VITE_` variables or commit real secrets.
+
+```env
 NODE_ENV=production
-PORT=8080
-CLIENT_ORIGIN=https://urbatechinter.com
+API_ORIGIN=https://api.example.com
+CLIENT_ORIGIN=https://www.example.com
+MONGO_URL=mongodb+srv://...
+JWT_SECRET=<long-random-secret>
+RESEND_API_KEY=<resend-key>
+EMAIL_FROM="URBA TECH <contact@urbatechinter.com>"
+EMAIL_SYSTEM_FROM="URBA TECH <noreply@urbatechinter.com>"
 
-# Database
-MONGO_URL=mongodb://...
+STRIPE_SECRET_KEY=<stripe-secret>
+STRIPE_WEBHOOK_SECRET=<stripe-webhook-secret>
+PAYPAL_CLIENT_ID=<paypal-client-id>
+PAYPAL_CLIENT_SECRET=<paypal-client-secret>
+PAYPAL_MODE=live
+PAYPAL_WEBHOOK_ID=<paypal-webhook-id>
 
-# JWT
-JWT_SECRET=<long-random-string>
-JWT_PREVIOUS_SECRETS=<comma-separated-old-secrets>
-
-# Email
-RESEND_API_KEY=<resend-api-key>
-EMAIL_FROM=URBA TECH <noreply@urbatechinter.com>
-DISABLE_EMAIL_VERIFICATION=false
-
-# Google OAuth
-GOOGLE_CLIENT_ID=<from-google-console>
-GOOGLE_CLIENT_SECRET=<from-google-console>
-GOOGLE_CALLBACK_URL=https://api.urbatechinter.com/api/auth/google/callback
-
-# Apple OAuth
-APPLE_CLIENT_ID=<from-apple-developer>
-APPLE_TEAM_ID=<from-apple-developer>
-APPLE_KEY_ID=<from-apple-developer>
-APPLE_PRIVATE_KEY_STRING=<base64-encoded-key>
-APPLE_CALLBACK_URL=https://api.urbatechinter.com/api/auth/apple/callback
-
-# Security
-ENFORCE_SAMESITE_STRICT=false  # Set to true if needed
+KONNECT_API_KEY=<konnect-key>
+KONNECT_RECEIVER_WALLET_ID=<wallet-id>
+PAYMEE_API_KEY=<paymee-key>
+PAYMEE_MODE=live
+FLOUCI_PUBLIC_KEY=<flouci-public-key>
+FLOUCI_PRIVATE_KEY=<flouci-private-key>
 ```
-
-## 🚀 Pre-Launch Checklist
-- [ ] All environment variables set in production
-- [ ] Database backups tested
-- [ ] HTTPS certificate installed
-- [ ] Rate limiting deployed
-- [ ] Logging configured
-- [ ] Error monitoring (Sentry) configured
-- [ ] Email delivery tested
-- [ ] OAuth credentials verified in production
-- [ ] CORS settings correct (frontend domain whitelisted)
-- [ ] Security headers added (HSTS, CSP, X-Frame-Options, etc.)
-- [ ] Load testing completed
-- [ ] Penetration testing recommended
-
-## Status Summary
-- **Implemented**: 20/26 items
-- **Pending**: 6/26 items (mostly ops/infra)
-- **Overall**: ~77% ready, with main gaps in rate limiting, logging, and ops setup
