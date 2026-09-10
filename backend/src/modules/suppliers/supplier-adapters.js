@@ -92,6 +92,7 @@ const defaultOrderResponseMapping = {
   supplier_order_id: "supplier_order_id|order_id|id",
   tracking: "tracking|tracking_number|trackingCode",
   packages: "packages|shipments|parcels",
+  package_update_id: "package_id|packageId|shipment_id|shipmentId|parcel_id|parcelId",
   package_id: "id|package_id|packageId|shipment_id|shipmentId|parcel_id|parcelId",
   package_carrier: "carrier|carrier_name|carrierName|shipping_carrier",
   package_carrier_code: "carrier_code|carrierCode",
@@ -109,6 +110,7 @@ const defaultOrderStatusMapping = {
   tracking: "tracking|tracking_number|trackingCode",
   carrier: "carrier|shipping_carrier",
   packages: "packages|shipments|parcels",
+  package_update_id: "package_id|packageId|shipment_id|shipmentId|parcel_id|parcelId",
   package_id: "id|package_id|packageId|shipment_id|shipmentId|parcel_id|parcelId",
   package_carrier: "carrier|carrier_name|carrierName|shipping_carrier",
   package_carrier_code: "carrier_code|carrierCode",
@@ -279,6 +281,7 @@ export class SupplierAdapter {
     return {
       supplier_order_id: firstValue(json, this.orderResponseMapping.supplier_order_id, null),
       tracking: firstValue(json, this.orderResponseMapping.tracking, null),
+      package_id: firstValue(json, this.orderResponseMapping.package_update_id, null),
       ...(Array.isArray(rawPackages) ? { packages: this.normalizePackages(rawPackages, this.orderResponseMapping) } : {}),
       status: firstValue(json, this.orderResponseMapping.status, "processing"),
       invoice_number: firstValue(json, this.orderResponseMapping.invoice_number, null),
@@ -294,6 +297,7 @@ export class SupplierAdapter {
       status: firstValue(json, this.orderStatusMapping.status, null),
       tracking: firstValue(json, this.orderStatusMapping.tracking, null),
       carrier: firstValue(json, this.orderStatusMapping.carrier, null),
+      package_id: firstValue(json, this.orderStatusMapping.package_update_id, null),
       ...(Array.isArray(rawPackages) ? { packages: this.normalizePackages(rawPackages, this.orderStatusMapping) } : {}),
       invoice_number: firstValue(json, this.orderStatusMapping.invoice_number, null),
       invoice_url: firstValue(json, this.orderStatusMapping.invoice_url, null)

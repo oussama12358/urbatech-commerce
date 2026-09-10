@@ -128,12 +128,19 @@ export function topLevelFulfillment(order, dispatches) {
   };
 }
 
-export function packagesFromSupplierUpdate(dispatch, { packages, tracking, carrier, status }) {
+export function packagesFromSupplierUpdate(dispatch, { packages, packageId, tracking, carrier, status }) {
   if (Array.isArray(packages)) return packages.map((item) => normalizePackage(item));
   // Historical dispatches keep their old single tracking fields untouched.
   if (!Array.isArray(dispatch.packages) || (!tracking && !carrier && !status)) return undefined;
   if (dispatch.packages.length === 0) {
-    return [normalizePackage({ tracking, carrier, status })];
+    return [normalizePackage({ id: packageId, tracking, carrier, status })];
+  }
+  if (packageId) {
+    const index = dispatch.packages.findIndex((item) => item.id === packageId);
+    if (index < 0) return undefined;
+    return dispatch.packages.map((item, currentIndex) => currentIndex === index
+      ? { ...item, ...(tracking ? { tracking } : {}), ...(carrier ? { carrier } : {}), ...(status ? { status } : {}) }
+      : item);
   }
   // A non-package-aware supplier update may safely update its sole package,
   // but must never guess which one of several packages it refers to.
@@ -588,7 +595,7 @@ export async function processSupplierDispatchRetries({ limit = 25 } = {}) {
   return { processed: rows.length, results };
 }
 
-export async function applySupplierOrderUpdate({ supplierOrderId, supplier_order_id, status, tracking, carrier, packages, invoice_number, invoice_url }) {
+export async function applySupplierOrderUpdate({ supplierOrderId, supplier_order_id, package_id, packageId, status, tracking, carrier, packages, invoice_number, invoice_url }) {
   const orders = await getCollection("orders");
   const lookupOrderId = supplierOrderId || supplier_order_id;
   const order = await orders.findOne({
@@ -601,7 +608,7 @@ export async function applySupplierOrderUpdate({ supplierOrderId, supplier_order
   let dispatches = (order.supplier_dispatches || []).map((dispatch) => {
     if (dispatch.supplier_order_id !== lookupOrderId) return dispatch;
     matchedDispatch = true;
-    const nextPackages = packagesFromSupplierUpdate(dispatch, { packages, tracking, carrier, status });
+    const nextPackages = packagesFromSupplierUpdate(dispatch, { packages, packageId: packageId || package_id, tracking, carrier, status });
     return {
       ...dispatch,
       ...(status ? { status } : {}),
@@ -711,6 +718,7 @@ export function normalizeSupplierWebhook(supplier, payload) {
     tracking: "tracking|tracking_number|trackingCode",
     carrier: "carrier|shipping_carrier",
     packages: "packages|shipments|parcels",
+    package_update_id: "package_id|packageId|shipment_id|shipmentId|parcel_id|parcelId",
     invoice_number: "invoice_number|invoiceNumber|invoice.id",
     invoice_url: "invoice_url|invoiceUrl|invoice.url|invoice.pdf_url",
     ...adapter.orderStatusMapping,
@@ -721,6 +729,7 @@ export function normalizeSupplierWebhook(supplier, payload) {
     status: firstValue(payload, mapping.status, null),
     tracking: firstValue(payload, mapping.tracking, null),
     carrier: firstValue(payload, mapping.carrier, null),
+    package_id: firstValue(payload, mapping.package_update_id, null),
     packages: adapter.normalizePackages(firstValue(payload, mapping.packages, null), mapping),
     invoice_number: firstValue(payload, mapping.invoice_number, null),
     invoice_url: firstValue(payload, mapping.invoice_url, null)

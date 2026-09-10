@@ -128,6 +128,14 @@ test("a legacy supplier status sync never guesses between two package tracking n
   assert.equal(completeUpdate[1].tracking, "TWO");
 });
 
+test("a supplier package identifier updates only the matching package", () => {
+  const dispatch = { packages: [{ id: "one", tracking: "ONE" }, { id: "two", tracking: "TWO" }] };
+  const updated = packagesFromSupplierUpdate(dispatch, { packageId: "two", tracking: "UPDATED-TWO", status: "Shipped" });
+  assert.equal(updated[0].tracking, "ONE");
+  assert.equal(updated[1].tracking, "UPDATED-TWO");
+  assert.equal(updated[1].status, "Shipped");
+});
+
 test("supplier adapter normalizes packages, shipments and parcels into one packages shape", () => {
   const adapter = new SupplierAdapter({ api_url: "https://supplier.example" });
   const packageRows = adapter.normalizePackages([{ id: "p1", carrier: "DHL", carrier_code: "dhl", tracking: "DHL-1", tracking_url: "https://example.test/dhl", status: "shipped", items: [{ product_id: "product-a", quantity: 1 }] }], adapter.orderStatusMapping);
@@ -149,4 +157,14 @@ test("supplier webhook reuses adapter package normalization", () => {
   });
   assert.equal(webhook.packages[0].id, "parcel-1");
   assert.equal(webhook.packages[0].tracking, "DHL-9");
+});
+
+test("supplier webhook accepts a singular package identifier for a tracking update", () => {
+  const webhook = normalizeSupplierWebhook({ api_url: "https://supplier.example" }, {
+    supplier_order_id: "SUP-1",
+    shipment_id: "parcel-1",
+    tracking_number: "DHL-UPDATED"
+  });
+  assert.equal(webhook.package_id, "parcel-1");
+  assert.equal(webhook.tracking, "DHL-UPDATED");
 });
