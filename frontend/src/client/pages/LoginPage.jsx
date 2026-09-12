@@ -6,6 +6,7 @@ import GoogleLogo from "../assets/google.svg";
 import AppleLogo from "../assets/apple.svg";
 import EyeIcon from "../assets/eye.svg";
 import EyeOffIcon from "../assets/eye-off.svg";
+import authBlueprint from "../../assets/urbatech-auth-blueprint.png";
 import { useLocale, t } from "../../i18n.js";
 
 const isAdmin = (user) => user?.role?.toLowerCase() === "admin";
@@ -91,7 +92,11 @@ export default function LoginPage() {
 
   return (
     <main className="auth-shell">
-      <section className="auth-card">
+      <div className="auth-layout">
+        <aside className="auth-brand-panel" aria-label="URBA TECH INTER">
+          <img className="auth-illustration-image" src={authBlueprint} alt="" />
+        </aside>
+        <section className="auth-card auth-form-panel">
         <div className="auth-header">
           <Link className="brand" to="/store"><span className="brand-mark">UTI</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
           <p>{t("accessAccountText")}</p>
@@ -152,6 +157,7 @@ export default function LoginPage() {
         </p>
         <Link className="secondary-btn auth-back-link" to="/store">{t("backToStore")}</Link>
       </section>
+      </div>
     </main>
   );
 }

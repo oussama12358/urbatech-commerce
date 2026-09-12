@@ -11,6 +11,7 @@ export default function Settlements() {
   const [settlements, setSettlements] = useState([]);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const interpolate = (key, values) => Object.entries(values).reduce((text, [name, value]) => text.replace(`{${name}}`, String(value)), t(key));
 
   const load = async () => {
     if (!user?.token) return;
@@ -20,14 +21,14 @@ export default function Settlements() {
   };
 
   useEffect(() => {
-    load().catch((err) => setError(err.message || "Unable to load settlements"));
+    load().catch((err) => setError(err.message || t("unableToLoadSettlements")));
   }, [user?.token]);
 
   const translateStatus = (status) => {
     if (!status) return "-";
     if (status === "paid") return t("paid");
     if (status === "pending") return t("paymentPending");
-    if (status === "processing") return "Processing";
+    if (status === "processing") return t("statusProcessing");
     if (status === "denied") return t("paymentDenied");
     if (status === "refunded") return t("refunded");
     if (status === "partially_refunded") return t("partiallyRefunded");
@@ -38,19 +39,20 @@ export default function Settlements() {
   const markPaid = async (settlement) => {
     const method = settlement.payout_method || "manual";
     const automatic = method === "stripe_connect" || method === "paypal_payout";
-    if (automatic && !window.confirm(`Send ${money(settlement.amount || 0, settlement.currency)} to this supplier using ${method === "stripe_connect" ? "Stripe Connect" : "PayPal Payouts"}?`)) return;
-    if (!automatic && !window.confirm(`Confirm that you have already sent ${money(settlement.amount || 0, settlement.currency)} to this supplier outside URBA TECH.`)) return;
+    const amount = money(settlement.amount || 0, settlement.currency);
+    if (automatic && !window.confirm(interpolate("confirmAutomaticPayout", { amount, method: method === "stripe_connect" ? "Stripe Connect" : "PayPal Payouts" }))) return;
+    if (!automatic && !window.confirm(interpolate("confirmManualPayout", { amount }))) return;
     const reference = automatic ? "" : window.prompt(t("payoutReferencePrompt"), settlement.payout_reference || "");
     if (reference === null) return;
     let paidAmount;
     let paidCurrency;
-    if (!automatic && window.confirm(`Did you pay in a currency different from ${settlement.currency || "USD"}?`)) {
-      paidAmount = window.prompt("Actual amount sent", "");
+    if (!automatic && window.confirm(interpolate("confirmDifferentPayoutCurrency", { currency: settlement.currency || "USD" }))) {
+      paidAmount = window.prompt(t("actualAmountSent"), "");
       if (paidAmount === null) return;
-      paidCurrency = window.prompt("Actual payment currency (for example TND)", "");
+      paidCurrency = window.prompt(t("actualPaymentCurrency"), "");
       if (paidCurrency === null) return;
       if (!paidAmount.trim() || !paidCurrency.trim()) {
-        setError("Enter both the actual amount and currency, or cancel the different-currency option.");
+        setError(t("actualPayoutAmountCurrencyRequired"));
         return;
       }
     }
@@ -78,7 +80,7 @@ export default function Settlements() {
       await api(`/admin/settlements/${settlement.id}/reconcile`, { method: "POST" });
       await load();
     } catch (err) {
-      setError(err.message || "Unable to check the PayPal payout status.");
+      setError(err.message || t("unableToCheckPayPalPayoutStatus"));
     } finally {
       setBusyId("");
     }
@@ -109,12 +111,12 @@ export default function Settlements() {
                   <td>{settlement.payout_reference || "-"}</td>
                   <td>
                     {settlement.status === "processing" && settlement.payout_method === "paypal_payout" && (
-                      <button className="icon-btn" type="button" onClick={() => reconcilePayPal(settlement)} disabled={busyId === settlement.id} title="Check PayPal payout status">
+                      <button className="icon-btn" type="button" onClick={() => reconcilePayPal(settlement)} disabled={busyId === settlement.id} title={t("checkPayPalPayoutStatus")}>
                         <RefreshCw />
                       </button>
                     )}
                     {settlement.status === "pending" && (
-                      <button className="icon-btn" type="button" onClick={() => markPaid(settlement)} disabled={busyId === settlement.id} title={settlement.payout_method === "stripe_connect" ? "Pay with Stripe Connect" : settlement.payout_method === "paypal_payout" ? "Pay with PayPal Payouts" : t("markPaid") }>
+                      <button className="icon-btn" type="button" onClick={() => markPaid(settlement)} disabled={busyId === settlement.id} title={settlement.payout_method === "stripe_connect" ? t("payWithStripeConnect") : settlement.payout_method === "paypal_payout" ? t("payWithPayPalPayouts") : t("markPaid") }>
                         <BadgeDollarSign />
                       </button>
                     )}

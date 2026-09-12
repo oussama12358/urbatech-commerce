@@ -58,7 +58,7 @@ export default function EditProduct() {
         if (!cancelled) setLoadedProduct(json.data || null);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message || "Unable to load product");
+        if (!cancelled) setError(err.message || t("unableToLoadProduct"));
       })
       .finally(() => {
         if (!cancelled) setProductLoaded(true);
@@ -120,7 +120,7 @@ export default function EditProduct() {
       });
       navigate("/admin/products");
     } catch (err) {
-      setError(err.message || "Unable to update product");
+      setError(err.message || t("unableToUpdateProduct"));
     }
   };
 
@@ -171,7 +171,7 @@ export default function EditProduct() {
               <label className="field-group"><span>{t("sellingPrice")}</span><input className="input" name="price" type="number" min="0.01" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder={t("sellingPrice")} required /></label>
               <label className="field-group"><span>{t("cost")}</span><input className="input" name="cost_price" type="number" min="0" step="0.01" value={costPrice} onChange={(event) => setCostPrice(event.target.value)} placeholder={t("costPricePlaceholder")} /></label>
               <label className="field-group"><span>{t("grossProfit")}</span><div className={`input muted-input gross-profit-preview ${grossProfit !== null && grossProfit < 0 ? "is-loss" : ""}`}>{grossProfit === null ? "—" : `${grossProfit.toFixed(2)} ${baseCurrency} (${grossMargin}%)`}</div></label>
-              <label className="field-group"><span>Base currency</span><select className="select" name="base_currency" value={baseCurrency} onChange={(event) => setBaseCurrency(event.target.value)}>{(currencies.length ? currencies : [{ code: "USD", name: "US Dollar", symbol: "$" }]).map((item) => <option key={item.code} value={item.code}>{currencyOptionLabel(item)}</option>)}</select></label>
+              <label className="field-group"><span>{t("baseCurrency")}</span><select className="select" name="base_currency" value={baseCurrency} onChange={(event) => setBaseCurrency(event.target.value)}>{(currencies.length ? currencies : [{ code: "USD", name: "US Dollar", symbol: "$" }]).map((item) => <option key={item.code} value={item.code}>{currencyOptionLabel(item)}</option>)}</select></label>
               <label className="field-group"><span>{t("stock")}</span><input className="input" name="stock" type="number" min="0" defaultValue={product.stock} placeholder={t("stockPlaceholder")} required /></label>
             </div>
           </div>
@@ -215,7 +215,7 @@ export default function EditProduct() {
             </div>
             <label className="field-group" style={{ marginTop: 14 }}>
               <span>{t("shipsToCountries")}</span>
-              <input className="input" value={shipsToCountries} onChange={(event) => setShipsToCountries(event.target.value)} placeholder="TN, FR, DE — leave empty for worldwide" />
+              <input className="input" value={shipsToCountries} onChange={(event) => setShipsToCountries(event.target.value)} placeholder={t("shipsToCountriesInputPlaceholder")} />
             </label>
           </div>
 

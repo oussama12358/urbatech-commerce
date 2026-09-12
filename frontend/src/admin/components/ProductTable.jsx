@@ -106,15 +106,15 @@ export default function ProductTable({ products, onDelete }) {
             <td className={margin < 0 ? "margin-loss" : ""}>{margin}%</td>
             <td>
               <div className="row-actions">
-                <Link className="icon-btn" to={`/admin/products/${product.id}/edit`} state={{ product }} aria-label={`Edit ${product.name}`}>
+                <Link className="icon-btn" to={`/admin/products/${product.id}/edit`} state={{ product }} aria-label={t("editProductNamed").replace("{name}", product.name)}>
                   <Pencil />
                 </Link>
                 {onDelete && (
                   <button
                     className="icon-btn danger-icon"
                     type="button"
-                    title={`Delete ${product.name}`}
-                    aria-label={`Delete ${product.name}`}
+                    title={t("deleteProductNamed").replace("{name}", product.name)}
+                    aria-label={t("deleteProductNamed").replace("{name}", product.name)}
                     onClick={() => onDelete(product)}
                   >
                     <Trash2 />

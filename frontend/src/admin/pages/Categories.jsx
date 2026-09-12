@@ -32,7 +32,7 @@ export default function Categories() {
       await addCategory({ name: form.name });
       formElement.reset();
     } catch (err) {
-      setError(err.message || "Unable to add category");
+      setError(err.message || t("unableToAddCategory"));
     }
   };
 
@@ -42,7 +42,7 @@ export default function Categories() {
       await deleteCategory(pendingDelete.id);
       setPendingDelete(null);
     } catch (err) {
-      setError(err.message || "Unable to delete category");
+      setError(err.message || t("unableToDeleteCategory"));
       setPendingDelete(null);
     }
   };

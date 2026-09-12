@@ -793,7 +793,7 @@ export default function Suppliers() {
               {(!user || !user.token || user.role?.toLowerCase() !== "admin") ? (
                 <>
                   <h3>{t("noApiSuppliersYet")}</h3>
-                  <p>Sign in as an administrator to view suppliers.</p>
+                  <p>{t("signInAsAdministrator")}</p>
                 </>
               ) : (
                 <>

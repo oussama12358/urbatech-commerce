@@ -112,10 +112,10 @@ export default function OrderDetails() {
           status: fulfillmentStatus
         })
       });
-      setActionMessage("Fulfillment and tracking details saved.");
+      setActionMessage(t("fulfillmentTrackingSaved"));
       await refreshOrder();
     } catch (err) {
-      setError(err.message || "Unable to save fulfillment details.");
+      setError(err.message || t("unableToSaveFulfillment"));
     } finally {
       setBusy(false);
     }
@@ -162,6 +162,9 @@ export default function OrderDetails() {
     if (status === "Refunded") return t("refunded");
     if (status === "Partially refunded") return t("partiallyRefunded");
     if (status === "Expired") return t("expired");
+    if (status === "Processing") return t("statusProcessing");
+    if (status === "Shipped") return t("statusShipped");
+    if (status === "Delivered") return t("statusDelivered");
     return status;
   };
 
@@ -205,41 +208,41 @@ export default function OrderDetails() {
           </div>
           <form className="panel form-grid" onSubmit={saveFulfillment}>
             <div>
-              <h2>Shipment fulfillment</h2>
-              <p className="page-copy">Update carrier, tracking and delivery status for the selected shipment. Supplier API updates remain separate.</p>
+              <h2>{t("shipmentFulfillment")}</h2>
+              <p className="page-copy">{t("shipmentFulfillmentLead")}</p>
             </div>
             {order.supplier_dispatches?.length ? <label className="field-group">
-              <span>Shipment to update</span>
+              <span>{t("shipmentToUpdate")}</span>
               <select className="select" value={selectedDispatchId} onChange={(event) => hydrateFulfillmentForm(order, event.target.value)}>
                 {order.supplier_dispatches.map((dispatch, index) => <option key={`${dispatch.supplier_id || "manual"}-${dispatch.supplier_order_id || index}`} value={dispatch.supplier_order_id || ""}>
-                  Shipment {index + 1} — {dispatch.status || "Processing"}
+                  {t("shipment")} {index + 1} — {translateOrderStatus(dispatch.status || "Processing")}
                 </option>)}
               </select>
             </label> : null}
             {order.supplier_dispatches?.length ? <label className="field-group">
-              <span>Package to update</span>
+              <span>{t("packageToUpdate")}</span>
               <select className="select" value={packageAction === "add" ? "" : selectedPackageId} onChange={(event) => event.target.value ? selectPackage(event.target.value) : prepareNewPackage()}>
-                <option value="">Add new package</option>
+                <option value="">{t("addNewPackage")}</option>
                 {(() => {
                   const dispatch = order.supplier_dispatches.find((item) => item.supplier_order_id === selectedDispatchId) || {};
                   const packages = Array.isArray(dispatch.packages) ? dispatch.packages : dispatch.carrier || dispatch.tracking || dispatch.tracking_url ? [{ id: "legacy", tracking: dispatch.tracking }] : [];
-                  return packages.map((packageRow, index) => <option key={packageRow.id || index} value={packageRow.id}>Package {index + 1} — {packageRow.tracking || "No tracking yet"}</option>);
+                  return packages.map((packageRow, index) => <option key={packageRow.id || index} value={packageRow.id}>{t("package")} {index + 1} — {packageRow.tracking || t("noTrackingYet")}</option>);
                 })()}
               </select>
             </label> : null}
             <label className="field-group">
               <span>{t("carrier")}</span>
               <select className="select" value={carrierCode} onChange={(event) => { setCarrierCode(event.target.value); setTrackingUrl(""); }}>
-                <option value="custom">Other / custom carrier</option>
+                <option value="custom">{t("otherCustomCarrier")}</option>
                 {carrierOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
               </select>
             </label>
             <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <span>Products in this package (optional)</span>
+              <span>{t("productsInPackageOptional")}</span>
               {order.items.map((item) => {
                 const allocation = packageItems.find((entry) => entry.product_id === item.product_id);
                 return <label className="kv-row" key={item.product_id}>
-                  <span>{item.name} (max {item.qty})</span>
+                  <span>{item.name} ({t("maximumQuantity").replace("{quantity}", item.qty)})</span>
                   <input className="input" style={{ maxWidth: 100 }} type="number" min="0" max={item.qty} value={allocation?.qty || ""} onChange={(event) => {
                     const qty = Math.min(Number(item.qty || 0), Math.max(0, Number(event.target.value || 0)));
                     setPackageItems((current) => [...current.filter((entry) => entry.product_id !== item.product_id), ...(qty ? [{ product_id: item.product_id, qty }] : [])]);
@@ -247,33 +250,33 @@ export default function OrderDetails() {
                 </label>;
               })}
             </div>
-            {carrierCode === "custom" ? <label className="field-group"><span>Carrier name</span><input className="input" value={carrier} onChange={(event) => setCarrier(event.target.value)} placeholder="DHL, Aramex, La Poste…" /></label> : null}
+            {carrierCode === "custom" ? <label className="field-group"><span>{t("carrierName")}</span><input className="input" value={carrier} onChange={(event) => setCarrier(event.target.value)} placeholder="DHL, Aramex, La Poste…" /></label> : null}
             <label className="field-group">
               <span>{t("tracking")}</span>
-              <input className="input" value={tracking} onChange={(event) => setTracking(event.target.value)} placeholder="Tracking number" />
+              <input className="input" value={tracking} onChange={(event) => setTracking(event.target.value)} placeholder={t("trackingNumber")} />
             </label>
             <label className="field-group">
-              <span>Custom tracking URL (optional)</span>
+              <span>{t("customTrackingUrlOptional")}</span>
               <input className="input" type="url" value={trackingUrl} onChange={(event) => setTrackingUrl(event.target.value)} placeholder="https://…" />
             </label>
             <label className="field-group">
               <span>{t("status")}</span>
               <select className="select" value={fulfillmentStatus} onChange={(event) => setFulfillmentStatus(event.target.value)}>
-                <option value="Processing">Processing</option>
-                <option value="Shipped">Shipped</option>
-                <option value="Delivered">Delivered</option>
+                <option value="Processing">{t("statusProcessing")}</option>
+                <option value="Shipped">{t("statusShipped")}</option>
+                <option value="Delivered">{t("statusDelivered")}</option>
               </select>
             </label>
-            <button className="primary-btn" type="submit" disabled={busy}>{busy ? t("processing") : "Save fulfillment"}</button>
+            <button className="primary-btn" type="submit" disabled={busy}>{busy ? t("processing") : t("saveFulfillment")}</button>
             {packageAction === "update" && selectedPackageId ? <button className="secondary-btn" type="button" disabled={busy} onClick={async () => {
-              if (!window.confirm("Remove this package?")) return;
+              if (!window.confirm(t("removePackageConfirm"))) return;
               setBusy(true); setError("");
               try {
                 const api = createApiClient(user.token);
                 await api(`/admin/orders/${id}/fulfillment`, { method: "PUT", body: JSON.stringify({ dispatch_supplier_order_id: selectedDispatchId, package_id: selectedPackageId, package_action: "remove" }) });
-                setActionMessage("Package removed."); await refreshOrder();
-              } catch (err) { setError(err.message || "Unable to remove package."); } finally { setBusy(false); }
-            }}>Remove package</button> : null}
+                setActionMessage(t("packageRemoved")); await refreshOrder();
+              } catch (err) { setError(err.message || t("unableToRemovePackage")); } finally { setBusy(false); }
+            }}>{t("removePackage")}</button> : null}
           </form>
           <div className="panel">
             <h2>{t("customer")}</h2>

@@ -18,7 +18,7 @@ export default function OrderDetailsPage() {
     const api = createApiClient(user.token);
     api(`/orders/${id}`)
       .then((json) => setOrder(json.data))
-      .catch((err) => setError(err.message || "Unable to load order"));
+      .catch((err) => setError(err.message || t("unableToLoadOrder")));
   }, [id, user?.token]);
 
   const translatePaymentStatus = (status) => {
@@ -41,6 +41,9 @@ export default function OrderDetailsPage() {
     if (status === "Refunded") return t("refunded");
     if (status === "Partially refunded") return t("partiallyRefunded");
     if (status === "Expired") return t("expired");
+    if (status === "Processing") return t("statusProcessing");
+    if (status === "Shipped") return t("statusShipped");
+    if (status === "Delivered") return t("statusDelivered");
     return status;
   };
   const shipments = Array.isArray(order?.shipments) ? order.shipments : [];
@@ -89,7 +92,7 @@ export default function OrderDetailsPage() {
                 {shipment.items?.length ? <div className="kv-row"><span>{t("items")}</span><strong>{shipment.items.map((item) => `${item.name} × ${item.qty}`).join(", ")}</strong></div> : null}
                 {shipment.status ? <div className="kv-row"><span>{t("status")}</span><strong>{translateOrderStatus(shipment.status)}</strong></div> : null}
                 {(shipment.packages?.length ? shipment.packages : [shipment]).map((packageRow, packageIndex) => <div className="kv" key={packageRow.id || packageIndex} style={{ marginTop: 10 }}>
-                  {shipment.packages?.length > 1 ? <h4>Package {packageIndex + 1}</h4> : null}
+                  {shipment.packages?.length > 1 ? <h4>{t("package")} {packageIndex + 1}</h4> : null}
                   {packageRow.items?.length && shipment.packages?.length > 1 ? <div className="kv-row"><span>{t("items")}</span><strong>{packageRow.items.map((item) => `${item.name} × ${item.qty}`).join(", ")}</strong></div> : null}
                   {packageRow.status ? <div className="kv-row"><span>{t("status")}</span><strong>{translateOrderStatus(packageRow.status)}</strong></div> : null}
                   <div className="kv-row"><span>{t("carrier")}</span><strong>{packageRow.carrier || t("notAvailableYet")}</strong></div>

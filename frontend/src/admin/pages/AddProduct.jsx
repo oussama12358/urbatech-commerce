@@ -88,7 +88,7 @@ export default function AddProduct() {
       });
       navigate("/admin/products");
     } catch (err) {
-      setError(err.message || "Unable to add product");
+      setError(err.message || t("unableToAddProduct"));
     }
   };
 
@@ -141,7 +141,7 @@ export default function AddProduct() {
           <h3>{t("pricing")}</h3>
           <div className="form-grid four">
             <label className="field-group">
-              <RequiredLabel>Base selling price</RequiredLabel>
+              <RequiredLabel>{t("baseSellingPrice")}</RequiredLabel>
               <input className="input" name="price" type="number" min="0.01" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder={t("sellingPrice")} required />
             </label>
             <label className="field-group">
@@ -155,7 +155,7 @@ export default function AddProduct() {
               </div>
             </label>
             <label className="field-group">
-              <RequiredLabel>Base currency</RequiredLabel>
+              <RequiredLabel>{t("baseCurrency")}</RequiredLabel>
               <select className="select" name="base_currency" value={baseCurrency} onChange={(event) => setBaseCurrency(event.target.value)}>
                 {(currencies.length ? currencies : [{ code: "USD", name: "US Dollar", symbol: "$" }]).map((item) => <option key={item.code} value={item.code}>{currencyOptionLabel(item)}</option>)}
               </select>
@@ -206,7 +206,7 @@ export default function AddProduct() {
           </div>
           <label className="field-group" style={{ marginTop: 14 }}>
             <span>{t("shipsToCountries")}</span>
-            <input className="input" value={shipsToCountries} onChange={(event) => setShipsToCountries(event.target.value)} placeholder="TN, FR, DE — leave empty for worldwide" />
+            <input className="input" value={shipsToCountries} onChange={(event) => setShipsToCountries(event.target.value)} placeholder={t("shipsToCountriesInputPlaceholder")} />
           </label>
         </div>
 

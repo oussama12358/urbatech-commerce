@@ -5,6 +5,7 @@ import { createApiClient } from "../../shared/lib/api.js";
 import { showToast } from "../../shared/lib/toast.js";
 import EyeIcon from "../assets/eye.svg";
 import EyeOffIcon from "../assets/eye-off.svg";
+import authBlueprint from "../../assets/urbatech-auth-blueprint.png";
 import { useLocale, t } from "../../i18n.js";
 
 export default function SignupPage() {
@@ -116,7 +117,11 @@ export default function SignupPage() {
   if (signupSuccess) {
     return (
       <main className="auth-shell">
-        <section className="auth-card">
+        <div className="auth-layout">
+          <aside className="auth-brand-panel" aria-label="URBA TECH INTER">
+            <img className="auth-illustration-image" src={authBlueprint} alt="" />
+          </aside>
+          <section className="auth-card auth-form-panel">
           <div className="auth-header">
             <Link className="brand" to="/store">
               <span className="brand-mark">UTI</span>
@@ -158,13 +163,18 @@ export default function SignupPage() {
             {t("backToLogin")}
           </Link>
         </section>
+        </div>
       </main>
     );
   }
 
   return (
     <main className="auth-shell">
-      <section className="auth-card">
+      <div className="auth-layout">
+        <aside className="auth-brand-panel" aria-label="URBA TECH INTER">
+          <img className="auth-illustration-image" src={authBlueprint} alt="" />
+        </aside>
+        <section className="auth-card auth-form-panel">
         <div className="auth-header">
           <Link className="brand" to="/store"><span className="brand-mark">UTI</span><span className="brand-text">URBA TECH <span>INTER</span></span></Link>
           <div>
@@ -212,6 +222,7 @@ export default function SignupPage() {
           <Link className="secondary-btn" to="/login" state={{ next: location.state?.next }}>{t("backToLogin")}</Link>
         </form>
       </section>
+      </div>
     </main>
   );
 }

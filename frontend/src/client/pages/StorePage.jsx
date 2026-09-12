@@ -91,7 +91,7 @@ export default function StorePage() {
       <section className="layout">
         <aside className="filters">
           <div className="field-group store-currency-select">
-            <span>Currency</span>
+            <span>{t("currency")}</span>
             <div className="currency-combobox" ref={currencyMenuRef}>
               <button
                 type="button"
@@ -108,17 +108,17 @@ export default function StorePage() {
                     className="input currency-search"
                     type="search"
                     autoFocus
-                    placeholder="Search currency..."
+                    placeholder={t("searchCurrency")}
                     value={currencyQuery}
                     onChange={(event) => setCurrencyQuery(event.target.value)}
-                    aria-label="Search currency"
+                    aria-label={t("searchCurrency")}
                   />
                   <div className="currency-combobox-options" role="listbox">
                     <button type="button" className="currency-combobox-option" onClick={() => chooseCurrency("")}>{t("productOriginalCurrency")}</button>
                     {currencyOptions.map((item) => (
                       <button type="button" className="currency-combobox-option" key={item.code} onClick={() => chooseCurrency(item.code)}>{currencyOptionLabel(item)}</button>
                     ))}
-                    {!currencyOptions.length ? <p className="currency-combobox-empty">No currencies found.</p> : null}
+                    {!currencyOptions.length ? <p className="currency-combobox-empty">{t("noCurrenciesFound")}</p> : null}
                   </div>
                 </div>
               ) : null}
